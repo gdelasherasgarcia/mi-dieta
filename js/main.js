@@ -13,6 +13,7 @@ import { avisar } from './ui.js';
 import { leerCodigo } from './escaner.js';
 import { abrirAyuda } from './ayuda.js';
 import { sincronizar } from './avisos.js';
+import { hoy } from './util.js';
 
 const PANTALLAS = [
   { id: 'hoy', titulo: 'Hoy', icono: '☀', vista: Hoy },
@@ -91,6 +92,21 @@ document.addEventListener('change', async ev => {
   }
   if (ev.target.matches('input[data-act="importar"]')) Mas.importarArchivo(ev.target).then(dibujar);
   if (ev.target.matches('input[data-act="cat-importar"]')) Catalogo.importarArchivo(ev.target).then(dibujar);
+});
+
+// Copia diaria automática (v0.22): el navegador solo permite descargar tras un toque del usuario,
+// así que se hace con el primer toque del día y con el primero a partir de las 21:00. Va a Descargas.
+document.addEventListener('click', () => {
+  try {
+    if (location.hostname === 'localhost') return;
+    const dia = hoy(), noche = new Date().getHours() >= 21, clave = dia + (noche ? '_noche' : '');
+    if (localStorage.getItem('dieta_copia_auto') === clave) return;
+    localStorage.setItem('dieta_copia_auto', clave);
+    const blob = new Blob([S.exportar()], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dieta_auto_${clave}.json`;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    avisar('Copia automática guardada en Descargas.');
+  } catch (e) {}
 });
 
 S.cargar();
