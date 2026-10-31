@@ -9,8 +9,7 @@ self.addEventListener('fetch', e => {
   if (r.method !== 'GET' || new URL(r.url).origin !== location.origin) return;
   e.respondWith(
     fetch(r, { cache: 'no-store' }).then(resp => {
-      const copia = resp.clone();
-      caches.open(CACHE).then(c => c.put(r, copia)).catch(() => {});
+      if (resp.ok) { const copia = resp.clone(); caches.open(CACHE).then(c => c.put(r, copia)).catch(() => {}); }
       return resp;
     }).catch(() => caches.match(r).then(x => x || caches.match('./')))
   );
