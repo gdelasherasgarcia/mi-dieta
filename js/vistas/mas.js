@@ -63,16 +63,16 @@ export function render() {
       <p class="sub" style="margin:8px 0 0">Para qué sirve cada pantalla, cómo se usa y las rutinas del día, la semana y el mes.</p></div>
 
     <h2>Copia de seguridad</h2>
-    <div class="card">
+${location.hostname === 'localhost' ? `    <div class="card">
       <p style="margin-top:0"><b>Prueba en el móvil:</b> si estás en casa con el portátil encendido, trae aquí sus datos de un toque (sustituye los de este dispositivo).</p>
       <button type="button" class="btn grande" data-act="traer-portatil">📥 Traer los datos del portátil</button>
     </div>
     <div class="card">
       <p style="margin-top:0"><b>Copia automática:</b> ${S.ultimaCopia ? 'última ' + esc(S.ultimaCopia.dia) + ' a las ' + esc(S.ultimaCopia.hora) : 'todavía ninguna'}.<br><span class="sub" style="margin:0">Se guarda sola en la carpeta «copias» de la app (una por día, las últimas 30).</span></p>
       <button type="button" class="btn grande" data-act="copia-ahora">Hacer una copia ahora</button>
-    </div>
+    </div>` : ''}
     <div class="card">
-      <p style="margin-top:0">Todo lo que apuntas se guarda en este dispositivo. Haz una copia de vez en cuando. Además, la app guarda sola una copia en Descargas con tu primer toque del día y con el primero después de las 21:00.</p>
+      <p style="margin-top:0">Todo lo que apuntas se guarda en este dispositivo. Haz una copia de vez en cuando. Además, la app guarda sola una copia en Descargas con tu primer toque del día y con el primero después de las 21:00.<br><span class="sub" style="margin:0">Última copia automática: ${esc(String((() => { try { return localStorage.getItem('dieta_copia_auto') || 'ninguna todavía'; } catch (e) { return 'ninguna todavía'; } })()).replace('_noche', ' (noche)'))}</span></p>
       <button type="button" class="btn main grande" data-act="exportar">Guardar copia (archivo)</button>
       <label class="btn grande" style="display:flex;align-items:center;justify-content:center;margin-top:10px">
         Recuperar una copia<input type="file" data-act="importar" hidden>
