@@ -1,0 +1,144 @@
+// Pantalla «Compra»: lista de lo que hay que comprar, y registro de lo comprado (a mano o con la foto del código de barras).
+import * as S from '../store.js';
+import { esc, nuevoId } from '../util.js';
+import { abrirHoja, campo, avisar } from '../ui.js';
+import { fichaCatalogo } from './catalogo.js';
+import { completar } from '../producto.js';
+import { quedan } from '../medicinas.js';
+import { hoy } from '../util.js';
+
+const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'paquete', 'bolsa', 'bote', 'lonchas', 'raciones'];
+const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', 'Despensa']];
+const SECCIONES = [['super', '🛒 Súper'], ['farmacia', '💊 Farmacia'], ['otros', '📦 Otros']];
+const seccion = x => x.seccion || 'super';
+const PERIODO = { 1: 'cada día', 3: 'cada 2-3 días', 7: 'cada semana', 14: 'cada 2 semanas' };
+const ubicDe = c => !c ? 'nevera' : c.categoria === 'congelado' ? 'congelador' : c.categoria === 'despensa' ? 'despensa' : 'nevera';
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+const opts = (lista, sel) => lista.map(x => { const [k, t] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t)}</option>`; }).join('');
+
+export function render() {
+  const d = S.datos(), c = d.compra, hechos = c.filter(x => x.hecho);
+  return `
+    <div class="fila sep"><div><h1>Compra</h1><p class="sub" style="margin:0">${c.length} en la lista · ${esc(d.ajustes.supermercado || 'supermercado')}, ${PERIODO[d.ajustes.compra_dias] || 'cada día'}</p></div>
+      <button type="button" class="btn main" data-act="comp-nuevo">+ Añadir</button></div>
+    <div style="height:12px"></div>
+    <label class="btn grande" style="display:flex;align-items:center;justify-content:center;cursor:pointer">📷 Registrar lo comprado con el código
+      <input type="file" accept="image/*" capture="environment" data-ean-compra hidden></label>
+    <p class="nota-pie" style="margin:6px 0 14px">Haz foto al código de barras: si el producto está en el catálogo entra en casa; si no, creas su ficha.</p>
+    ${SECCIONES.map(([k, t]) => { const l = c.filter(x => seccion(x) === k); if (!l.length) return ''; return `<h2>${t} (${l.length})</h2>` + l.map(x => `<div class="item" style="${x.hecho ? 'opacity:.6' : ''}">
+      <button type="button" class="btn mini" data-act="comp-marcar" data-id="${esc(x.id)}" aria-label="Marcar como comprado" aria-pressed="${!!x.hecho}">${x.hecho ? '✔' : '○'}</button>
+      <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="comp-editar" data-id="${esc(x.id)}">
+        <div class="nom" style="${x.hecho ? 'text-decoration:line-through' : ''}">${esc(x.nombre)}</div>
+        <div class="det">${esc([x.cantidad ? x.cantidad + ' ' + x.unidad : '', x.nota].filter(Boolean).join(' · '))}</div></button></div>`).join(''); }).join('') || '<div class="card vacio">La lista está vacía. Pulsa «+ Añadir».</div>'}
+    ${hechos.length ? `<button type="button" class="btn ok grande" data-act="comp-pasar" style="margin-top:12px">Entrar en casa lo marcado (${hechos.length})</button>` : ''}
+    <p class="nota-pie">«Pasar a casa» te va preguntando cantidad, sitio y caducidad de cada producto marcado; solo sale de la lista cuando lo guardas en casa.</p>`;
+}
+
+function aAlmacen({ nombre, cantidad, unidad, ubicacion, caducidad }, cat) {
+  const d = S.datos();
+  const ya = d.nevera.find(p => norm(p.nombre) === norm(nombre) && p.ubicacion === ubicacion && (p.caducidad || null) === (caducidad || null));
+  if (ya) ya.cantidad = Number(ya.cantidad) + Number(cantidad);
+  else d.nevera.push(completar({ id: nuevoId(), nombre, cantidad: Number(cantidad), unidad, ubicacion, caducidad: caducidad || null, nota: '', marca: cat?.marca || '',
+    envase: null, escurrido: false, sal100: cat && cat.sal != null ? cat.sal : null, abierto: null, dias_abierto: null, ean: cat?.ean || null, v2: true }));
+  if (cat) cat.en_tienda = 'si';
+  const k = d.compra.findIndex(x => norm(x.nombre) === norm(nombre));      // si estaba en la lista, se tacha sola
+  if (k >= 0) d.compra.splice(k, 1);
+}
+
+function hojaAlmacen(cat) {                                                  // «entra en casa»: cantidad, sitio y caducidad
+  abrirHoja(`<h1>Entra en casa</h1><p class="sub">${esc(cat.nombre)}</p>
+    <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="1">`)}${campo('Unidad', `<select name="unidad">${opts(UNID, 'ud')}</select>`)}</div>
+    ${campo('Dónde lo guardas', `<select name="ubicacion">${opts(UBIC, ubicDe(cat))}</select>`)}
+    ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date">`)}
+    <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar en casa</button></div>`, f => {
+    const cantidad = Number(String(f.cantidad).replace(',', '.'));
+    if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
+    aAlmacen({ nombre: cat.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad }, cat);
+    S.guardar(); avisar(`«${cat.nombre.slice(0, 40)}» ya está en casa.`); return true;
+  });
+}
+
+// Llamado desde main.js cuando se lee un código de barras en esta pantalla.
+export function registrarEan(code) {
+  const cat = S.buscarCatalogoEan(code);
+  if (cat) { hojaAlmacen(cat); return; }
+  avisar('Código nuevo: crea su ficha.');
+  fichaCatalogo(null, { borrador: { ean: code }, despues: nuevo => hojaAlmacen(nuevo) });
+}
+
+function formulario(x) {
+  const d = S.datos(), v = y => esc(y ?? '');
+  x = x || { nombre: '', cantidad: 1, unidad: 'ud', nota: '' };
+  return `<h1>${x.id ? 'Editar' : 'Añadir a la lista'}</h1>
+    ${campo('Producto', `<input name="nombre" required value="${v(x.nombre)}" list="lista-cat-compra" autocomplete="off">`)}
+    <datalist id="lista-cat-compra">${d.catalogo.map(c => `<option value="${esc(c.nombre)}">`).join('')}</datalist>
+    <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${v(x.cantidad)}">`)}${campo('Unidad', `<select name="unidad">${opts(UNID, x.unidad)}</select>`)}</div>
+    ${campo('¿Dónde se compra?', `<select name="seccion">${opts(SECCIONES.map(([k, t]) => [k, t]), seccion(x))}</select>`)}
+    ${campo('Nota', `<input name="nota" value="${v(x.nota)}" autocomplete="off">`)}
+    <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
+    ${x.id ? '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Quitar de la lista</button>' : ''}`;
+}
+
+// Asistente de ingreso en casa: una hoja por producto marcado. Un producto solo sale de la lista cuando se guarda en casa.
+function asistente(ids, total, hechos) {
+  const d = S.datos(), id = ids.shift();
+  if (!id) { avisar(total ? `Ingreso terminado: ${hechos} de ${total} guardados en casa.` : 'No hay nada marcado.'); return; }
+  const x = d.compra.find(y => y.id === id); if (!x) { asistente(ids, total, hechos); return; }
+  if (seccion(x) !== 'super') {                                           // farmacia y otros: no entran al almacén
+    const med = x.med_id && d.ajustes.medicinas.find(m => m.id === x.med_id);
+    if (med) {                                                           // reposición de pastillas → actualiza el stock
+      const q = quedan(med, d.registro) ?? 0;
+      abrirHoja(`<h1>Reponer pastillas</h1><p class="sub">${esc(med.nombre)}${med.dosis ? ' ' + esc(med.dosis) : ''}. Ahora quedan ${esc(String(q).replace('.', ','))}.</p>
+        ${campo('¿Cuántas pastillas has traído?', `<input name="n" type="number" inputmode="numeric" min="0" step="1" value="">`)}
+        <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
+        <div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="nolo">No las traje</button><button class="btn grow" type="submit" value="saltar">Luego</button></div>`, (f, acc) => {
+        let h = hechos;
+        if (acc === 'guardar') {
+          const nuevas = Number(String(f.n).replace(',', '.')); if (!nuevas || nuevas <= 0) { avisar('Pon cuántas pastillas has traído.'); return false; }
+          med.stock_base = { n: q + nuevas, fecha: hoy(), hora: new Date().toTimeString().slice(0, 5) }; d.compra = d.compra.filter(y => y !== x); S.guardar(); h++;
+        } else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
+        setTimeout(() => asistente(ids, total, h), 0); return true;
+      });
+      return;
+    }
+    d.compra = d.compra.filter(y => y !== x); S.guardar(); asistente(ids, total, hechos + 1); return;      // un recado normal: se tacha y listo
+  }
+  const cat = S.buscarCatalogo(x.nombre), n = total - ids.length;
+  abrirHoja(`<h1>Entra en casa (${n} de ${total})</h1><p class="sub">${esc(x.nombre)}${x.nota ? ' · ' + esc(x.nota) : ''}</p>
+    <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${esc(x.cantidad || 1)}">`)}${campo('Unidad', `<select name="unidad">${opts(UNID, x.unidad || 'ud')}</select>`)}</div>
+    ${campo('Dónde lo guardas', `<select name="ubicacion">${opts(UBIC, ubicDe(cat))}</select>`)}
+    ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date">`)}
+    <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar en casa</button></div>
+    <div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="nolo">No lo traje</button><button class="btn grow" type="submit" value="saltar">Luego</button></div>
+    <p class="nota-pie">«No lo traje» lo deja en la lista sin marcar. «Luego» lo deja marcado para otro momento.</p>`, (f, acc) => {
+    let h = hechos;
+    if (acc === 'guardar') {
+      const cantidad = Number(String(f.cantidad).replace(',', '.'));
+      if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
+      aAlmacen({ nombre: x.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad }, cat); S.guardar(); h++;
+    } else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
+    setTimeout(() => asistente(ids, total, h), 0);                       // la hoja se cierra al volver; la siguiente se abre después
+    return true;
+  });
+}
+
+export function acciones(act, el) {
+  const d = S.datos();
+  if (act === 'comp-marcar') { const x = d.compra.find(y => y.id === el.dataset.id); if (x) { x.hecho = !x.hecho; S.guardar(); } return true; }
+  if (act === 'comp-pasar') {
+    const ids = d.compra.filter(x => x.hecho).map(x => x.id);
+    asistente(ids, ids.length, 0); return true;
+  }
+  if (act === 'comp-nuevo' || act === 'comp-editar') {
+    const x = act === 'comp-editar' ? d.compra.find(y => y.id === el.dataset.id) : null;
+    abrirHoja(formulario(x), (f, acc) => {
+      if (acc === 'borrar') { d.compra = d.compra.filter(y => y !== x); S.guardar(); return true; }
+      const nombre = (f.nombre || '').trim(); if (!nombre) { avisar('Falta el producto.'); return false; }
+      const dato = { nombre, cantidad: Number(String(f.cantidad).replace(',', '.')) || 1, unidad: f.unidad, nota: (f.nota || '').trim(), seccion: f.seccion || 'super' };
+      if (x) Object.assign(x, dato); else d.compra.push({ id: nuevoId(), hecho: false, ...dato });
+      S.guardar(); return true;
+    });
+    return true;
+  }
+  return false;
+}

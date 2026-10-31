@@ -1,0 +1,33 @@
+// Valores medios por 100 g (crudo, salvo indicación) de alimentos corrientes, de tablas generales de composición. ESTIMACIÓN: sirven para
+// calcular calorías y proteína de las recetas. Son valores medios, no de una marca concreta.
+// k = clave que usan las recetas; kcal, prot (g), sal (g); nom = nombre para la lista de la compra; unidad de compra habitual.
+export const GEN = {
+  contramuslo: { nom: 'Contramuslo de pollo sin piel', kcal: 125, prot: 20, sal: 0.15, re: /contramuslo/i },
+  pechuga_pollo: { nom: 'Pechuga de pollo', kcal: 110, prot: 23, sal: 0.15, re: /pechuga.*pollo|pollo.*pechuga/i },
+  muslo_pollo: { nom: 'Muslo de pollo sin piel', kcal: 125, prot: 19.5, sal: 0.15, re: /muslo.*pollo|pollo.*muslo/i },
+  conejo: { nom: 'Conejo', kcal: 135, prot: 21.5, sal: 0.12, re: /conejo/i },
+  pavo: { nom: 'Pavo fresco (filete o chuleta)', kcal: 105, prot: 23, sal: 0.15, re: /(filete|chuleta|pechuga).*pavo|pavo.*(filete|chuleta)/i, no: /loncha|embutido|jam[oó]n|fiambre/i },
+  brocoli: { nom: 'Brócoli', kcal: 34, prot: 2.8, sal: 0.03, re: /br[oó]coli/i },
+  judias: { nom: 'Judías verdes', kcal: 31, prot: 1.8, sal: 0.01, re: /jud[ií]as verdes/i },
+  menestra: { nom: 'Menestra de verduras congelada', kcal: 45, prot: 3, sal: 0.1, re: /menestra/i },
+  alcachofa: { nom: 'Alcachofas', kcal: 35, prot: 2.4, sal: 0.1, re: /alcachofa/i },
+  espinacas: { nom: 'Espinacas', kcal: 23, prot: 2.9, sal: 0.15, re: /espinaca/i },
+  calabacin: { nom: 'Calabacín', kcal: 17, prot: 1.2, sal: 0.01, re: /calabac[ií]n/i },
+  patata: { nom: 'Patata', kcal: 77, prot: 2, sal: 0.01, re: /patata|boniato/i },
+  lentejas: { nom: 'Lentejas cocidas (bote)', kcal: 105, prot: 8, sal: 0.6, re: /lenteja/i },
+  garbanzos: { nom: 'Garbanzos cocidos (bote)', kcal: 135, prot: 8.5, sal: 0.5, re: /garbanzo/i },
+  alubias: { nom: 'Alubias cocidas (bote)', kcal: 100, prot: 7, sal: 0.6, re: /alubia/i },
+  quinoa: { nom: 'Quinoa', kcal: 368, prot: 14, sal: 0.02, re: /quinoa/i },
+  espagueti: { nom: 'Espaguetis integrales', kcal: 350, prot: 13, sal: 0.02, re: /espagueti|pasta integral/i },
+  arroz: { nom: 'Arroz integral', kcal: 350, prot: 7.5, sal: 0.02, re: /arroz/i, no: /negro|verduras|congelad/i },
+  pasta: { nom: 'Pasta integral (macarrones, espaguetis…)', kcal: 350, prot: 13, sal: 0.02, re: /pasta|macarr|espagueti|fusilli|penne/i },
+  cherry: { nom: 'Tomates cherry', kcal: 18, prot: 0.9, sal: 0.01, re: /cherry/i },
+  ensalada: { nom: 'Ensalada de sobre', kcal: 20, prot: 0.7, sal: 0.03, re: /ensalada|lechuga/i },
+  aceite: { nom: 'Aceite de oliva', kcal: 884, prot: 0, sal: 0, re: /aceite de oliva/i },
+  ajo: { nom: 'Ajo', kcal: 149, prot: 6.4, sal: 0.02, re: /\bajo/i },
+  huevo: { nom: 'Huevos', kcal: 138, prot: 13, sal: 0.36, re: /huevo/i },
+  queso: { nom: 'Queso tierno', kcal: 353, prot: 25, sal: 1.5, re: /queso/i },
+  jamon_pavo: { nom: 'Jamón de pavo', kcal: 95, prot: 17, sal: 1.5, re: /(jam[oó]n|pechuga|fiambre|loncha).*pavo|pavo.*(loncha|embutido)/i },
+  cebolla: { nom: 'Cebolla', kcal: 40, prot: 1.1, sal: 0.01, re: /cebolla/i },
+  pan: { nom: 'Pan de payés integral', kcal: 240, prot: 9, sal: 1.0, re: /pan de pay/i },
+};

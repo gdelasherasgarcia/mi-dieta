@@ -1,0 +1,139 @@
+// Pantalla «Almacén de comida»: lo que hay en casa, con caducidades. Ordena por lo que antes hay que gastar.
+import * as S from '../store.js';
+import { esc, diasHasta, fechaCorta, nuevoId } from '../util.js';
+import { abrirHoja, campo, avisar, botonFoto } from '../ui.js';
+import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
+
+const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', 'Despensa']];
+const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa'];
+const CONTABLES = new Set(['ud', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa']);
+let filtro = 'todo';
+
+const cmp = (a, b) => (a === null ? 1 : b === null ? -1 : a - b);
+const fmt = n => Number(n).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+
+function etiquetaCaducidad(p) {
+  const f = caducidadEfectiva(p), n = diasHasta(f), ab = caducaPorApertura(p) ? 'abierto: ' : '';
+  if (n === null) return { txt: 'sin fecha', clase: '' };
+  if (p.ubicacion === 'congelador') return { txt: fechaCorta(f), clase: '' };
+  if (n < 0) return { txt: `${ab}caducado hace ${-n} d`, clase: 'bad' };
+  if (n === 0) return { txt: `${ab}caduca hoy`, clase: 'warn' };
+  if (n <= 3) return { txt: `${ab}caduca en ${n} d`, clase: 'warn' };
+  return { txt: ab + fechaCorta(f), clase: 'ok' };
+}
+
+function detalle(p) {
+  const partes = [`${fmt(p.cantidad)} ${p.unidad}`, p.ubicacion];
+  if (p.marca) partes.push(p.marca);
+  if (p.envase) partes.push(`${fmt(p.envase)} g${p.escurrido ? ' escurrido' : ''}`);
+  if (p.sal100 !== null && p.sal100 !== undefined && p.sal100 !== '') partes.push(`sal ${fmt(p.sal100)} g/100 g`);
+  if (p.nota) partes.push(p.nota);
+  return partes.map(esc).join(' · ');
+}
+
+export function render() {
+  const d = S.datos();
+  const lista = d.nevera
+    .filter(p => filtro === 'todo' || p.ubicacion === filtro)
+    .sort((a, b) => cmp(diasHasta(caducidadEfectiva(a)), diasHasta(caducidadEfectiva(b))) || a.nombre.localeCompare(b.nombre, 'es'));
+  const filtros = [['todo', 'Todo'], ...UBIC].map(([k, t]) =>
+    `<button type="button" class="filtro" data-act="filtro" data-k="${k}" aria-pressed="${filtro === k}">${t}</button>`).join('');
+
+  const tarjetas = lista.map(p => {
+    const c = etiquetaCaducidad(p), n = diasHasta(caducidadEfectiva(p));
+    const cls = n !== null && p.ubicacion !== 'congelador' ? (n < 0 ? 'caducado' : n <= 3 ? 'alerta' : '') : '';
+    const menos = CONTABLES.has(p.unidad) ? `<button type="button" class="btn mini" data-act="menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : '';
+    return `<div class="item ${cls}">
+      <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="editar" data-id="${p.id}">
+        <div class="nom">${esc(p.nombre)}</div>
+        <div class="det">${detalle(p)}</div>
+      </button>
+      <span class="chip ${c.clase}">${esc(c.txt)}</span>${menos}</div>`;
+  }).join('');
+
+  return `
+    <div class="fila sep"><div><h1>Almacén de comida</h1><p class="sub" style="margin:0">${d.nevera.length} productos en casa</p></div>
+      <button type="button" class="btn main" data-act="anadir">+ Añadir</button></div>
+    <div style="height:12px"></div>
+    <div class="filtros" role="group" aria-label="Filtrar por sitio">${filtros}</div>
+    ${tarjetas || '<div class="card vacio">No hay nada aquí. Pulsa «Añadir».</div>'}
+  `;
+}
+
+function formulario(p) {
+  const nuevo = !p;
+  p = p || { nombre: '', cantidad: 1, unidad: 'ud', ubicacion: filtro === 'todo' ? 'nevera' : filtro, caducidad: '', nota: '', marca: '', envase: null, escurrido: false, sal100: null, abierto: null, dias_abierto: null };
+  const v = x => esc(x ?? '');
+  const opts = (lista, sel) => lista.map(x => { const [k, t] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t)}</option>`; }).join('');
+  const masDatos = p.marca || p.envase || p.sal100 !== null || p.abierto || nuevo === false;
+  return `
+    <h1>${nuevo ? 'Añadir producto' : 'Editar'}</h1>
+    ${campo('Producto', `<input name="nombre" required value="${v(p.nombre)}" autocomplete="off" list="lista-catalogo">`)}
+    ${campo('Código de barras (opcional)', `<input name="ean" inputmode="numeric" value="${v(p.ean)}" placeholder="si está en el catálogo, rellena el producto" autocomplete="off">`)}
+    ${botonFoto()}
+    <datalist id="lista-catalogo">${S.datos().catalogo.map(c => `<option value="${esc(c.nombre)}">`).join('')}</datalist>
+    <div class="dos">
+      ${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${v(p.cantidad)}">`)}
+      ${campo('Unidad', `<select name="unidad">${opts(UNID, p.unidad)}</select>`)}
+    </div>
+    ${campo('Dónde está', `<select name="ubicacion">${opts(UBIC, p.ubicacion)}</select>`)}
+    ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date" value="${v(p.caducidad)}">`)}
+    <details ${masDatos ? 'open' : ''} style="margin-bottom:12px">
+      <summary style="min-height:44px;display:flex;align-items:center;font-weight:700">Más datos (marca, envase, sal, apertura)</summary>
+      ${campo('Marca', `<input name="marca" value="${v(p.marca)}" autocomplete="off">`)}
+      <div class="dos">
+        ${campo('Peso del envase (g)', `<input name="envase" type="number" inputmode="decimal" min="0" step="any" value="${v(p.envase)}">`)}
+        ${campo('Ración habitual (g)', `<input name="racion" type="number" inputmode="decimal" min="0" step="any" value="${v(p.racion)}">`)}
+        ${campo('Sal (g por 100 g)', `<input name="sal100" type="number" inputmode="decimal" min="0" step="any" value="${v(p.sal100)}">`)}
+      </div>
+      <label class="fila" style="min-height:44px;margin-bottom:8px"><input type="checkbox" name="escurrido" value="1" ${p.escurrido ? 'checked' : ''} style="width:24px;height:24px"> El peso es ya escurrido</label>
+      <div class="dos">
+        ${campo('Abierto el', `<input name="abierto" type="date" value="${v(p.abierto)}">`)}
+        ${campo('Consumir en (días)', `<input name="dias_abierto" type="number" inputmode="numeric" min="1" step="1" value="${v(p.dias_abierto)}">`)}
+      </div>
+    </details>
+    ${campo('Nota', `<input name="nota" value="${v(p.nota)}" autocomplete="off">`)}
+    <div class="fila" style="margin-top:6px">
+      <button class="btn main grow" type="submit" value="guardar">Guardar</button>
+      ${nuevo ? '' : '<button class="btn" type="submit" value="gastado">Gastado</button>'}
+    </div>
+    ${nuevo ? '' : '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}
+  `;
+}
+
+const numOrNull = s => (s === undefined || s === null || String(s).trim() === '') ? null : (Number(String(s).replace(',', '.')) || 0);
+
+export function acciones(act, el) {
+  const d = S.datos();
+  if (act === 'filtro') { filtro = el.dataset.k; return true; }
+  if (act === 'menos') {
+    const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
+    p.cantidad = Math.max(0, Number(p.cantidad) - 1);
+    if (p.cantidad === 0) { d.nevera = d.nevera.filter(x => x !== p); avisar(`«${p.nombre}» gastado: fuera de la lista.`); }
+    S.guardar(); return true;
+  }
+  if (act === 'anadir' || act === 'editar') {
+    const p = act === 'editar' ? d.nevera.find(x => x.id === el.dataset.id) : null;
+    abrirHoja(formulario(p), (f, accion) => {
+      if (accion === 'borrar' || accion === 'gastado') {
+        d.nevera = d.nevera.filter(x => x !== p); S.guardar(); avisar(accion === 'gastado' ? 'Marcado como gastado.' : 'Borrado.'); return true;
+      }
+      const ean = (f.ean || '').replace(/\D/g, '');
+      const porEan = ean ? S.buscarCatalogoEan(ean) : null;
+      const nombre = (f.nombre || '').trim() || (porEan ? porEan.nombre : '');
+      if (!nombre) { avisar(ean ? 'Ese código no está en el catálogo: escribe el nombre.' : 'Falta el nombre del producto.'); return false; }
+      const datos = {
+        nombre, cantidad: Number(String(f.cantidad).replace(',', '.')) || 0, unidad: f.unidad, ubicacion: f.ubicacion,
+        caducidad: f.caducidad || null, nota: (f.nota || '').trim(), marca: (f.marca || '').trim(),
+        envase: numOrNull(f.envase), escurrido: f.escurrido === '1', sal100: numOrNull(f.sal100),
+        ean: ean || null, racion: numOrNull(f.racion), abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), v2: true,
+      };
+      const cat = S.buscarCatalogo(nombre);                 // si está en el catálogo, completa lo que dejaste vacío
+      if (cat) { if (datos.sal100 === null && cat.sal !== null && cat.sal !== undefined) datos.sal100 = cat.sal; if (!datos.marca && cat.marca) datos.marca = cat.marca; }
+      if (p) Object.assign(p, datos); else d.nevera.push(completar({ id: nuevoId(), ...datos }));
+      S.guardar(); return true;
+    });
+    return true;
+  }
+  return false;
+}
