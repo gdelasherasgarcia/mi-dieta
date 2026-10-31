@@ -72,14 +72,14 @@ export function render() {
       <button type="button" class="btn grande" data-act="copia-ahora">Hacer una copia ahora</button>
     </div>
     <div class="card">
-      <p style="margin-top:0">Todo lo que apuntas se guarda en este dispositivo. Haz una copia de vez en cuando.</p>
+      <p style="margin-top:0">Todo lo que apuntas se guarda en este dispositivo. Haz una copia de vez en cuando. Además, la app guarda sola una copia en Descargas con tu primer toque del día y con el primero después de las 21:00.</p>
       <button type="button" class="btn main grande" data-act="exportar">Guardar copia (archivo)</button>
       <label class="btn grande" style="display:flex;align-items:center;justify-content:center;margin-top:10px">
         Recuperar una copia<input type="file" data-act="importar" hidden>
       </label>
     </div>
     <button type="button" class="btn peligro grande" data-act="borrar-todo">Borrar todos los datos</button>
-    <p class="nota-pie">Esta app no es un médico: orienta, no cambia tu medicación. Versión 0.21.</p>
+    <p class="nota-pie">Esta app no es un médico: orienta, no cambia tu medicación. Versión 0.22.</p>
   `;
 }
 
