@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi dieta</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f6f1e6">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css?v=0.21">
+<!-- Versionado: al cambiar V se obliga al navegador a recargar todos los módulos (evita ver una versión vieja). -->
+<script type="importmap">{"imports": {
+    "./js/store.js": "./js/store.js?v=0.21",
+    "./js/util.js": "./js/util.js?v=0.21",
+    "./js/semilla.js": "./js/semilla.js?v=0.21",
+    "./js/producto.js": "./js/producto.js?v=0.21",
+    "./js/medicinas.js": "./js/medicinas.js?v=0.21",
+    "./js/escaner.js": "./js/escaner.js?v=0.21",
+    "./js/ui.js": "./js/ui.js?v=0.21",
+    "./js/vistas/comidas.js": "./js/vistas/comidas.js?v=0.21",
+    "./js/generador.js": "./js/generador.js?v=0.21",
+    "./js/nutri_generica.js": "./js/nutri_generica.js?v=0.21",
+    "./js/recetas_semilla.js": "./js/recetas_semilla.js?v=0.21",
+    "./js/vistas/recetas.js": "./js/vistas/recetas.js?v=0.21",
+    "./js/ics.js": "./js/ics.js?v=0.21",
+    "./js/avisos.js": "./js/avisos.js?v=0.21",
+    "./js/ayuda.js": "./js/ayuda.js?v=0.21",
+    "./js/gasto.js": "./js/gasto.js?v=0.21",
+    "./js/vistas/plan.js": "./js/vistas/plan.js?v=0.21",
+    "./js/vistas/ejercicio.js": "./js/vistas/ejercicio.js?v=0.21",
+    "./js/vistas/hoy.js": "./js/vistas/hoy.js?v=0.21",
+    "./js/vistas/menu.js": "./js/vistas/menu.js?v=0.21",
+    "./js/vistas/nevera.js": "./js/vistas/nevera.js?v=0.21",
+    "./js/catalogo_semilla.js": "./js/catalogo_semilla.js?v=0.21",
+    "./js/vistas/catalogo.js": "./js/vistas/catalogo.js?v=0.21",
+    "./js/vistas/medicinas.js": "./js/vistas/medicinas.js?v=0.21",
+    "./js/salud_semilla.js": "./js/salud_semilla.js?v=0.21",
+    "./js/vistas/salud.js": "./js/vistas/salud.js?v=0.21",
+    "./js/compra_semilla.js": "./js/compra_semilla.js?v=0.21",
+    "./js/vistas/compra.js": "./js/vistas/compra.js?v=0.21",
+    "./js/vistas/mas.js": "./js/vistas/mas.js?v=0.21"
+}}</script>
+</head>
+<body data-version="0.21">
+<div id="telefono">
+  <main id="vista" aria-live="polite"></main>
+  <nav id="tabs" aria-label="Secciones"></nav>
+  <div id="hoja" hidden></div>
+  <div id="aviso" role="status" hidden></div>
+</div>
+<script type="module" src="js/main.js?v=0.21"></script>
+</body>
+</html>
