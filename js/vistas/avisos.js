@@ -13,6 +13,13 @@ const aISO = d => iso(d) + 'T' + dos(d.getHours()) + ':' + dos(d.getMinutes());
 const tipoNombre = k => (A.TIPOS.find(t => t[0] === k) || [k, k])[1];
 const diasTexto = p => p.unico ? 'solo el ' + fechaCorta(p.unico) : (!p.dias || !p.dias.length || p.dias.length === 7) ? 'cada día' : DIAS.filter(([k]) => p.dias.includes(Number(k))).map(([, t]) => t).join(' ');
 
+// Los avisos propios creados desde Agua, Comidas o Ejercicio se listan dentro de su desplegable (grupo); el resto, en «Mis avisos».
+const EMO_GRUPO = [['💧', 'agua'], ['🍽', 'comidas'], ['🚴', 'ejercicio']];
+const grupoDe = p => p.grupo || (EMO_GRUPO.find(([e]) => String(p.titulo || '').startsWith(e)) || [])[1] || '';
+const filaPropio = p => `<button type="button" class="item" data-act="av-edit" data-id="${esc(p.id)}" style="${p.activo === false ? 'opacity:.6' : ''}">
+        <span class="grow"><span class="nom" style="display:block">${esc(p.titulo)}</span><span class="det" style="display:block">${esc(p.hora)} · ${esc(diasTexto(p))}${p.nota ? ' · ' + esc(p.nota) : ''}</span></span>
+        <span class="chip ${p.activo === false ? '' : 'ok'}">${p.activo === false ? 'apagado' : 'activado'}</span></button>`;
+const listaGrupo = (k, propios) => { const l = propios.filter(p => grupoDe(p) === k); return l.length ? `<p class="det" style="margin:10px 0 6px">Tus avisos de este tipo:</p>` + l.map(filaPropio).join('') : ''; };
 const abierto = k => { try { return sessionStorage.getItem('av_ab_' + k) === '1'; } catch (e) { return false; } };
 const acordeon = (k, a, cuerpo, extra = '') => {
   const act = A.estaActivo(a, k);
@@ -47,9 +54,7 @@ export function render() {
       <button type="button" class="btn grande" data-nav="medicinas">💊 Abrir Medicinas</button>`)}
     ${acordeon('propios', a, `<p class="sub">Avisos que creas tú, con su hora y sus días. Vencen a su hora y siguen en rojo hasta que los marcas como hechos.</p>
       <button type="button" class="btn main grande" data-act="av-nuevo" style="margin-bottom:10px">+ Nuevo aviso</button>
-      ${propios.map(p => `<button type="button" class="item" data-act="av-edit" data-id="${esc(p.id)}" style="${p.activo === false ? 'opacity:.6' : ''}">
-        <span class="grow"><span class="nom" style="display:block">${esc(p.titulo)}</span><span class="det" style="display:block">${esc(p.hora)} · ${esc(diasTexto(p))}${p.nota ? ' · ' + esc(p.nota) : ''}</span></span>
-        <span class="chip ${p.activo === false ? '' : 'ok'}">${p.activo === false ? 'apagado' : 'activado'}</span></button>`).join('') || '<div class="card vacio" style="margin:0">Aún no has creado ninguno.</div>'}`, `<span class="det">${propios.length}</span>`)}
+      ${propios.filter(p => !grupoDe(p)).map(filaPropio).join('') || '<div class="card vacio" style="margin:0">Aún no has creado ninguno.</div>'}`, `<span class="det">${propios.filter(p => !grupoDe(p)).length}</span>`)}
     ${acordeon('stock', a, `<p class="sub">Avisa cuando quedan pocas pastillas de una medicina y pone «Reponer…» en la lista de la compra (sección Farmacia). Cuántas son «pocas» se ajusta en cada medicina.</p>
       <button type="button" class="btn grande" data-nav="medicinas">💊 Abrir Medicinas</button>`)}
     ${acordeon('citas', a, `<p class="sub">Avisa unos días antes de cada cita con el médico o el enfermero. Las citas se crean y se editan en Salud.</p>
@@ -57,19 +62,19 @@ export function render() {
       <button type="button" class="btn grande" data-nav="salud">❤ Abrir Salud</button>`)}
     ${acordeon('agua', a, `<p class="sub">Avisa si vas por detrás del ritmo de agua del día (de 11:00 a 22:00). Ahora: vaso de ${esc(Number(a.vaso_ml) || 250)} ml.</p>
       <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="agua-ajustes">💧 Vaso y objetivo</button><button type="button" class="btn grow" data-act="aviso-ics" data-k="agua">📅 Al calendario del móvil</button></div>
-      <button type="button" class="btn grande" style="margin-top:8px" data-act="av-nuevo" data-pre="💧 Un vaso de agua">+ Otro aviso a una hora</button>`)}
+      <button type="button" class="btn grande" style="margin-top:8px" data-act="av-nuevo" data-pre="💧 Un vaso de agua" data-grupo="agua">+ Otro aviso a una hora</button>${listaGrupo('agua', propios)}`)}
     ${acordeon('comidas', a, `<p class="sub">Avisa una hora después de cada comida si aún no la has apuntado.</p>
       <div class="dos">${[['hora_desayuno', 'Desayuno'], ['hora_media', 'Media mañana'], ['hora_comida', 'Comida'], ['hora_cena', 'Cena']].map(([k, t]) => `<label class="campo"><span>${t} a las</span><input type="time" data-ajtxt="${k}" value="${esc(a[k] || '')}"></label>`).join('')}</div>
-      <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="aviso-ics" data-k="comidas">📅 Al calendario del móvil</button><button type="button" class="btn grow" data-act="av-nuevo" data-pre="🍽 Apunta lo que has comido">+ Otro aviso</button></div>`)}
+      <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="aviso-ics" data-k="comidas">📅 Al calendario del móvil</button><button type="button" class="btn grow" data-act="av-nuevo" data-pre="🍽 Apunta lo que has comido" data-grupo="comidas">+ Otro aviso</button></div>${listaGrupo('comidas', propios)}`)}
     ${acordeon('ejercicio', a, `<p class="sub">Avisa a esa hora si hoy aún no has apuntado ejercicio.</p>
       <label class="campo"><span>Ejercicio a las</span><input type="time" data-ajtxt="hora_ejercicio" value="${esc(a.hora_ejercicio || '')}"></label>
-      <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="aviso-ics" data-k="ejercicio">📅 Al calendario del móvil</button><button type="button" class="btn grow" data-act="av-nuevo" data-pre="🚴 Ejercicio">+ Otro aviso</button></div>`)}
+      <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="aviso-ics" data-k="ejercicio">📅 Al calendario del móvil</button><button type="button" class="btn grow" data-act="av-nuevo" data-pre="🚴 Ejercicio" data-grupo="ejercicio">+ Otro aviso</button></div>${listaGrupo('ejercicio', propios)}`)}
     <p class="nota-pie"><b>Hecho</b>: marca un aviso tuyo como cumplido hoy. <b>Posponer</b>: vuelve a avisar dentro de 1 hora, 3 horas o mañana. <b>Anular</b>: no avisa más por hoy. <b>Cancelar</b>: apaga ese aviso (o ese tipo) hasta que lo actives otra vez. Solo se ven con la app abierta; con la app cerrada avisa el calendario del móvil.</p>`;
 }
 
-function formPropio(p, pre = '') {
+function formPropio(p, pre = '', grupo = '') {
   const nuevo = !p; p = p || { titulo: pre, hora: '', dias: [], unico: '', nota: '', activo: true };
-  return `<h1>${nuevo ? 'Nuevo aviso' : 'Editar aviso'}</h1>
+  return `<h1>${nuevo ? 'Nuevo aviso' : 'Editar aviso'}</h1><input type="hidden" name="grupo" value="${esc(nuevo ? grupo : (p.grupo || ''))}">
     ${campo('¿Qué te aviso?', `<input name="titulo" required value="${esc(p.titulo)}" autocomplete="off" placeholder="p. ej. Llamar a la farmacia">`)}
     ${campo('A las', `<input name="hora" type="time" required value="${esc(p.hora)}">`)}
     <p class="det" style="margin:0 0 6px">Días (si no marcas ninguno, todos los días):</p>
@@ -98,11 +103,11 @@ export function acciones(act, el) {
   }
   if (act === 'av-nuevo' || act === 'av-edit') {
     const p = act === 'av-edit' ? A.propios().find(x => x.id === el.dataset.id) : null;
-    abrirHoja(formPropio(p, el.dataset.pre || ''), (f, acc) => {
+    abrirHoja(formPropio(p, el.dataset.pre || '', el.dataset.grupo || ''), (f, acc) => {
       if (acc === 'borrar') { A.borrarPropio(p.id); avisar('Aviso borrado.'); return true; }
       const titulo = (f.titulo || '').trim(), hora = f.hora || '';
       if (!titulo || !/^\d\d:\d\d$/.test(hora)) { avisar('Faltan el texto y la hora.'); return false; }
-      const datos = { titulo, hora, dias: DIAS.filter(([k]) => f['d' + k] === '1').map(([k]) => Number(k)), unico: f.unico || null, nota: (f.nota || '').trim(), activo: f.activo === '1' };
+      const datos = { titulo, hora, dias: DIAS.filter(([k]) => f['d' + k] === '1').map(([k]) => Number(k)), unico: f.unico || null, nota: (f.nota || '').trim(), activo: f.activo === '1', grupo: f.grupo || (p && p.grupo) || '' };
       if (acc === 'ics') {
         descargar(`aviso_${titulo.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').slice(0, 30) || 'aviso'}.ics`, calendario([eventoPropio({ id: p ? p.id : 'nuevo-' + Date.now(), ...datos })], 'Dieta · Mis avisos'));
         avisar('Archivo descargado: ábrelo en el móvil y se añade al calendario.'); return false;
