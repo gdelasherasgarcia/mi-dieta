@@ -9,6 +9,7 @@ import * as Compra from './vistas/compra.js';
 import * as Menu from './vistas/menu.js';
 import * as Recetas from './vistas/recetas.js';
 import * as Mas from './vistas/mas.js';
+import * as AvisosV from './vistas/avisos.js';
 import { avisar } from './ui.js';
 import { leerCodigo } from './escaner.js';
 import { abrirAyuda } from './ayuda.js';
@@ -24,10 +25,12 @@ const PANTALLAS = [
   { id: 'recetas', titulo: 'Recetario', icono: '📖', vista: Recetas, oculta: true },
   { id: 'catalogo', titulo: 'Catálogo', icono: '📖', vista: Catalogo, oculta: true },
   { id: 'medicinas', titulo: 'Medicinas', icono: '💊', vista: Medicinas, oculta: true },
+  { id: 'avisos', titulo: 'Avisos', icono: '🔔', vista: AvisosV, oculta: true, padre: 'hoy' },
   { id: 'mas', titulo: 'Más', icono: '⚙', vista: Mas },
 ];
 const WEBS_SUPER = { Eroski: 'https://supermercado.eroski.es', Mercadona: 'https://tienda.mercadona.es', Carrefour: 'https://www.carrefour.es/supermercado', Dia: 'https://www.dia.es/compra-online', Alcampo: 'https://www.alcampo.es', Lidl: 'https://www.lidl.es', Otro: '' };
 let actual = 'hoy';
+let pila = [];                                               // pantallas por las que se ha pasado hasta llegar a una secundaria (para «← Volver»)
 try { actual = localStorage.getItem('dieta_pantalla') || 'hoy'; } catch (e) {}
 if (!PANTALLAS.some(p => p.id === actual)) actual = 'hoy';
 
@@ -37,10 +40,14 @@ function dibujar() {
   const y = vista.scrollTop;
   const pant = PANTALLAS.find(p => p.id === actual) || PANTALLAS[0];
   vista.innerHTML = pant.vista.render();
+  if (pant.oculta) {                                                   // pantallas secundarias: botón para volver a la que se venía
+    const vuelta = PANTALLAS.find(p => p.id === (pila[pila.length - 1] || pant.padre || 'mas')) || PANTALLAS[0];
+    vista.insertAdjacentHTML('afterbegin', `<button type="button" class="btn mini volver" data-volver style="margin-bottom:10px">← ${vuelta.titulo}</button>`);
+  }
   vista.scrollTop = y;
   const h1 = vista.querySelector('h1');                              // «?» junto al título: ayuda de la pantalla
   if (h1 && !h1.querySelector('.ayuda-btn')) h1.insertAdjacentHTML('beforeend', ` <button type="button" class="ayuda-btn" data-ayuda="${pant.id}" aria-label="Ayuda de esta pantalla">?</button>`);
-  const activa = pant.oculta ? 'mas' : pant.id;                      // las pantallas ocultas cuelgan de «Más»
+  const activa = pant.oculta ? (pant.padre || 'mas') : pant.id;                      // las pantallas ocultas cuelgan de «Más»
   document.getElementById('tabs').innerHTML = PANTALLAS.filter(p => !p.oculta).map(p =>
     `<button type="button" data-nav="${p.id}" ${p.id === activa ? 'aria-current="page"' : ''}><span class="ico" aria-hidden="true">${p.icono}</span>${p.titulo}</button>`).join('');
   if (S.ultimoError) avisar(S.ultimoError);
@@ -49,8 +56,17 @@ function dibujar() {
 document.addEventListener('click', ev => {
   const ay = ev.target.closest('[data-ayuda]');
   if (ay) { ev.preventDefault(); abrirAyuda(ay.dataset.ayuda); return; }
+  const vb = ev.target.closest('[data-volver]');
+  if (vb) {                                                     // «← Volver»: a la pantalla de la que se venía
+    const pant = PANTALLAS.find(p => p.id === actual) || PANTALLAS[0];
+    actual = pila.pop() || pant.padre || 'mas';
+    try { localStorage.setItem('dieta_pantalla', actual); } catch (e) {}
+    document.getElementById('vista').scrollTop = 0; dibujar(); return;
+  }
   const nav = ev.target.closest('[data-nav]');
   if (nav) {
+    const destino = PANTALLAS.find(p => p.id === nav.dataset.nav);
+    if (destino && destino.oculta) { if (destino.id !== actual) pila.push(actual); } else pila = [];
     actual = nav.dataset.nav;
     try { localStorage.setItem('dieta_pantalla', actual); } catch (e) {}
     document.getElementById('vista').scrollTop = 0; dibujar(); return;
@@ -94,7 +110,7 @@ document.addEventListener('change', async ev => {
   if (ev.target.matches('input[data-act="cat-importar"]')) Catalogo.importarArchivo(ev.target).then(dibujar);
 });
 
-// Copia diaria automática (v0.22): el navegador solo permite descargar tras un toque del usuario,
+// Copia diaria automática: el navegador solo permite descargar tras un toque del usuario,
 // así que se hace con el primer toque del día y con el primero a partir de las 21:00. Va a Descargas.
 document.addEventListener('click', () => {
   try {
