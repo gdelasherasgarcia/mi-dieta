@@ -7,7 +7,7 @@ let temporizador = null;
 
 export function abrirHoja(html, alEnviar) {
   const h = hoja();
-  h.innerHTML = `<div class="panel" role="dialog" aria-modal="true"><form novalidate>${html}</form></div>`;
+  h.innerHTML = `<div class="panel" role="dialog" aria-modal="true"><button type="button" class="cerrar-hoja" data-cerrar aria-label="Cerrar">✕</button><form novalidate>${html}</form></div>`;
   h.hidden = false;
   const form = h.querySelector('form');
   form.addEventListener('submit', ev => {
@@ -16,7 +16,11 @@ export function abrirHoja(html, alEnviar) {
     const datos = Object.fromEntries(new FormData(form).entries());
     if (alEnviar(datos, accion) !== false) cerrarHoja();
   });
-  h.addEventListener('click', ev => { if (ev.target === h) cerrarHoja(); }, { once: true });
+  if (!h._cierre) {                                             // se engancha una sola vez: fuera de la ventana, ✕ o Esc la cierran
+    h._cierre = true;
+    h.addEventListener('click', ev => { if (ev.target === h || ev.target.closest('[data-cerrar]')) cerrarHoja(); });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !h.hidden) cerrarHoja(); });
+  }
   const primero = form.querySelector('input:not([type=hidden]), select, textarea');
   if (primero) primero.focus({ preventScroll: true });
 }
