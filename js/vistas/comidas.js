@@ -18,7 +18,7 @@ export function render() {
     ${FRANJAS.map(([k, t, clave]) => {
       const r = reg[k], prev = aj[clave] || '';
       const estado = !r ? '' : r.estado === 'comi' ? `<span class="chip ok">comido${r.hora ? ' ' + esc(r.hora) : ''}</span>` : r.estado === 'cambie' ? `<span class="chip warn">cambiado${r.hora ? ' ' + esc(r.hora) : ''}</span>` : `<span class="chip">no comí</span>`;
-      return `<div class="item" style="display:block;${r && r.estado === 'comi' ? 'border-color:var(--ok);background:var(--ok-soft)' : ''}">
+      return `<div class="item" style="display:block;${r && (r.estado === 'comi' || r.estado === 'cambie') ? 'border-color:var(--ok);background:var(--ok-soft)' : ''}">
         <div class="fila sep"><span class="nom">${t}</span>${estado}</div>
         <div class="det" style="margin:2px 0 8px">${r && r.texto && r.estado !== 'no' ? esc(r.texto) : prev ? 'Previsto: ' + esc(prev) : 'Sin menú fijo: apunta lo que comas'}</div>
         <div class="fila">
