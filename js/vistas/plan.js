@@ -12,13 +12,22 @@ function porSacar() {
   return d.nevera.filter(p => ids.has(p.id) && p.ubicacion === 'congelador');
 }
 
+// ¿A qué comida corresponde el aviso? (para que se vea si ya no es lo que has planeado)
+function paraQue(p) {
+  const man = sumaDias(hoy(), 1), pm = planDe(man).comida, ph = planDe(hoy()).comida;
+  if (pm && (pm.ids || []).includes(p.id)) return `la comida de mañana («${(pm.texto || '').slice(0, 40)}»)`;
+  if (ph && (ph.ids || []).includes(p.id)) return `la comida de hoy («${(ph.texto || '').slice(0, 40)}»)`;
+  return 'la comida prevista';
+}
+
 export function render() {
   const man = sumaDias(hoy(), 1), pm = planDe(man).comida, sacar = porSacar();
   return `
     <h2>Mañana</h2>
     ${sacar.map(p => `<div class="item alerta"><div class="grow"><div class="nom">Saca del congelador: ${esc(p.nombre)}</div>
-      <div class="det">Pásalo hoy a la nevera para la comida prevista.</div></div>
-      <button type="button" class="btn mini" data-act="plan-sacar" data-id="${esc(p.id)}">Ya lo saqué</button></div>`).join('')}
+      <div class="det">Pásalo hoy a la nevera para ${esc(paraQue(p))}.</div></div>
+      <button type="button" class="btn mini" data-act="plan-sacar" data-id="${esc(p.id)}">Ya lo saqué</button>
+      <button type="button" class="btn mini" data-act="plan-nousar" data-id="${esc(p.id)}">No lo uso</button></div>`).join('')}
     <div class="item" style="display:block">
       <div class="fila sep"><span class="nom">Comida de mañana</span><span class="chip">${esc(fechaCorta(man))}</span></div>
       <div class="det" style="margin:2px 0 8px">${pm && pm.texto ? esc(pm.texto) : 'Sin planear. Si va a ser algo congelado, avísame aquí y te recuerdo sacarlo.'}</div>
@@ -28,6 +37,10 @@ export function render() {
 
 export function acciones(act, el) {
   const d = S.datos(), man = sumaDias(hoy(), 1);
+  if (act === 'plan-nousar') {                                                // ya no lo voy a usar: se quita de la comida de hoy y de mañana y deja de recordarlo
+    for (const f of [man, hoy()]) { const c = planDe(f).comida; if (c && c.ids) c.ids = c.ids.filter(i => i !== el.dataset.id); }
+    S.guardar(); avisar('Hecho: ya no te lo recordaré.'); return true;
+  }
   if (act === 'plan-sacar') {
     const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
     p.ubicacion = 'nevera'; p.caducidad = sumaDias(hoy(), 2); p.nota = [p.nota, `descongelado el ${fechaCorta(hoy())}`].filter(Boolean).join(' · ');
