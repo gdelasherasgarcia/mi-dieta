@@ -16,6 +16,13 @@ const activosBot = d => (d.botiquin || []).filter(x => !x.baja);
 export function botiquinPendiente(d) {                                  // para Hoy: caducados y que caducan en 30 días
   return activosBot(d).map(p => ({ p, n: diasHasta(caducidadEfectiva(p)) })).filter(x => x.n !== null && x.n <= 30).sort((a, b) => a.n - b.n);
 }
+const CONTABLES_BOT = new Set(['comprimidos', 'ud', 'sobres']);                // se pueden ir gastando de uno en uno (−1)
+const nrm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+function reponerEnCompra(d, p, motivo) {                                      // al gastarse un medicamento, queda anotado para comprarlo en la farmacia
+  const nombre = 'Reponer ' + p.nombre, ya = (d.compra || []).some(x => nrm(x.nombre) === nrm(nombre));
+  if (!ya) (d.compra ||= []).push({ id: nuevoId(), nombre, cantidad: null, unidad: '', seccion: 'farmacia', nota: motivo, hecho: false });
+  return !ya;
+}
 export function altaBotiquin(d, datos) { (d.botiquin ||= []).push({ id: nuevoId(), tipo: 'sin', abierto: null, dias_abierto: null, nota: '', ...datos }); }
 function etiquetaBot(p) {
   const f = caducidadEfectiva(p), n = diasHasta(f), ab = caducaPorApertura(p) ? 'abierto: ' : '';
@@ -29,7 +36,7 @@ function detalleBot(p) {
   const partes = [`${fmt(p.cantidad)} ${p.unidad}`, p.tipo === 'con' ? 'con receta' : 'sin receta'];
   if (p.abierto) partes.push(`abierto el ${fechaCorta(p.abierto)}${Number(p.dias_abierto) > 0 ? ` (consumir en ${p.dias_abierto} d)` : ''}`);
   if (p.nota) partes.push(p.nota);
-  return partes.map(esc).join(' · ');
+  return partes.map(esc).join(' · ') + (p.para ? `<br><span style="opacity:.85">Para: ${esc(p.para.length > 90 ? p.para.slice(0, 90) + '…' : p.para)}</span>` : '');
 }
 function htmlBotiquin(d) {
   const lista = activosBot(d).sort((a, b) => cmp(diasHasta(caducidadEfectiva(a)), diasHasta(caducidadEfectiva(b))) || a.nombre.localeCompare(b.nombre, 'es'));
@@ -38,7 +45,7 @@ function htmlBotiquin(d) {
     return `<div class="item ${cad ? 'caducado' : n !== null && n <= 30 ? 'alerta' : ''}">
       <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="bot-editar" data-id="${p.id}">
         <div class="nom">${esc(p.nombre)}</div><div class="det">${detalleBot(p)}</div></button>
-      <span class="chip ${c.clase}">${esc(c.txt)}</span>${cad ? `<button type="button" class="btn mini" data-act="bot-baja" data-id="${p.id}">Retirar</button>` : ''}</div>`;
+      <span class="chip ${c.clase}">${esc(c.txt)}</span>${cad ? `<button type="button" class="btn mini" data-act="bot-baja" data-id="${p.id}">Retirar</button>` : ''}${CONTABLES_BOT.has(p.unidad) && Number(p.cantidad) > 0 ? `<button type="button" class="btn mini" data-act="bot-menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : ''}</div>`;
   };
   const bajas = (d.botiquin || []).filter(x => x.baja).sort((a, b) => b.baja.localeCompare(a.baja));
   return (lista.map(fila).join('') || '<div class="card vacio">El botiquín está vacío. Pulsa «Añadir».</div>')
@@ -67,6 +74,9 @@ function formularioBot(p) {
         ${campo('Consumir en (días)', `<input name="dias_abierto" type="number" inputmode="numeric" min="1" step="1" value="${v(p.dias_abierto)}">`)}
       </div>
     </details>
+    <label class="campo"><span>Para qué sirve (ficha)</span><textarea name="para" rows="3" autocomplete="off" placeholder="p. ej. antiinflamatorio; 1 comprimido cada 8 h con comida…" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px">${v(p.para)}</textarea></label>
+    <button type="button" class="btn grande" data-act="bot-ia" style="margin:-4px 0 12px">🤖 Preguntar a una IA (copia la pregunta)</button>
+    <p class="det" style="margin:-6px 0 10px">Pega la pregunta en tu IA y copia aquí su respuesta. Es orientativo: manda el prospecto y lo que te diga el médico o la farmacia.</p>
     ${campo('Nota', `<input name="nota" value="${v(p.nota)}" autocomplete="off">`)}
     <div class="fila" style="margin-top:6px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
     ${nuevo ? '' : '<div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="baja-cad">Dar de baja: caducado</button><button class="btn grow" type="submit" value="baja-gast">Gastado</button></div><button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}`;
@@ -201,15 +211,28 @@ export function acciones(act, el) {
   const d = S.datos();
   if (act === 'filtro') { filtro = el.dataset.k; return true; }
   if (act === 'anadir' && filtro === 'botiquin') act = 'bot-nuevo';
+  if (act === 'bot-ia') {
+    const f = el.closest('form'), nombre = ((f && f.querySelector('[name="nombre"]')) || {}).value?.trim();
+    if (!nombre) { avisar('Escribe primero el nombre del medicamento.'); return false; }
+    const q = `Explícame en español, en 3 líneas como máximo y con palabras sencillas, para qué sirve el medicamento «${nombre}» y sus precauciones básicas. Responde solo con ese texto; no sustituye al prospecto ni al médico.`;
+    (navigator.clipboard?.writeText(q) || Promise.reject()).then(() => avisar('Pregunta copiada: pégala en tu IA y trae aquí la respuesta.')).catch(() => { if (f) f.querySelector('[name="para"]').value = ''; avisar('No pude copiar. Pregunta: para qué sirve «' + nombre + '».'); });
+    return false;
+  }
+  if (act === 'bot-menos') {
+    const p = (d.botiquin || []).find(x => x.id === el.dataset.id); if (!p) return true;
+    p.cantidad = Math.max(0, Math.round((Number(p.cantidad) - 1) * 1000) / 1000);
+    if (p.cantidad === 0) { p.baja = hoy(); p.motivo = 'gastado'; avisar(reponerEnCompra(d, p, 'Se acabó en el botiquín') ? `«${p.nombre}» gastado: anotado en la lista de la compra (Farmacia).` : `«${p.nombre}» gastado.`); }
+    S.guardar(); return true;
+  }
   if (act === 'bot-baja') { const p = (d.botiquin || []).find(x => x.id === el.dataset.id); if (p) { p.baja = hoy(); p.motivo = 'caducado'; S.guardar(); avisar(SIGRE); } return true; }
   if (act === 'bot-nuevo' || act === 'bot-editar') {
     const p = act === 'bot-editar' ? (d.botiquin || []).find(x => x.id === el.dataset.id) : null;
     abrirHoja(formularioBot(p), (f, acc) => {
       if (acc === 'borrar') { d.botiquin = d.botiquin.filter(x => x !== p); S.guardar(); avisar('Borrado.'); return true; }
-      if (acc === 'baja-cad' || acc === 'baja-gast') { p.baja = hoy(); p.motivo = acc === 'baja-cad' ? 'caducado' : 'gastado'; S.guardar(); avisar(acc === 'baja-cad' ? SIGRE : 'Marcado como gastado.'); return true; }
+      if (acc === 'baja-cad' || acc === 'baja-gast') { p.baja = hoy(); p.motivo = acc === 'baja-cad' ? 'caducado' : 'gastado'; const anot = acc === 'baja-gast' && reponerEnCompra(d, p, 'Se acabó en el botiquín'); S.guardar(); avisar(acc === 'baja-cad' ? SIGRE : anot ? 'Gastado: anotado en la lista de la compra (Farmacia).' : 'Marcado como gastado.'); return true; }
       const nombre = (f.nombre || '').trim(); if (!nombre) { avisar('Falta el nombre del producto.'); return false; }
       const datos = { nombre, tipo: f.tipo === 'con' ? 'con' : 'sin', cantidad: Number(String(f.cantidad).replace(',', '.')) || 0, unidad: f.unidad,
-        caducidad: f.caducidad || null, abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), nota: (f.nota || '').trim() };
+        caducidad: f.caducidad || null, abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), nota: (f.nota || '').trim(), para: (f.para || '').trim() };
       if (p) Object.assign(p, datos); else altaBotiquin(d, datos);
       S.guardar(); return true;
     });
