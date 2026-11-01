@@ -23,7 +23,7 @@ export function render() {
   return `
     <div class="fila sep"><div><h1>Compra</h1><p class="sub" style="margin:0">${c.length} en la lista · ${esc(d.ajustes.supermercado || 'supermercado')}, ${PERIODO[d.ajustes.compra_dias] || 'cada día'}</p></div>
       <button type="button" class="btn main" data-act="comp-nuevo">+ Añadir</button></div>
-    <div style="height:12px"></div>
+    <div class="fila" style="margin:12px 0"><button type="button" class="btn grow" data-act="comp-super">🏪 Mi súper y mi compra</button><button type="button" class="btn grow" data-nav="catalogo">📖 Catálogo de productos</button></div>
     <label class="btn grande" style="display:flex;align-items:center;justify-content:center;cursor:pointer">📷 Registrar lo comprado con el código
       <input type="file" accept="image/*" capture="environment" data-ean-compra hidden></label>
     <p class="nota-pie" style="margin:6px 0 14px">Haz foto al código de barras: si el producto está en el catálogo entra en casa; si no, creas su ficha.</p>
@@ -143,8 +143,25 @@ function asistente(ids, total, hechos) {
   });
 }
 
+const SUPERS = ['Eroski', 'Mercadona', 'Carrefour', 'Dia', 'Alcampo', 'Lidl', 'Otro'];
+const WEBS = { Eroski: 'https://supermercado.eroski.es', Mercadona: 'https://tienda.mercadona.es', Carrefour: 'https://www.carrefour.es/supermercado', Dia: 'https://www.dia.es/compra-online', Alcampo: 'https://www.alcampo.es', Lidl: 'https://www.lidl.es', Otro: '' };
+
 export function acciones(act, el) {
   const d = S.datos();
+  if (act === 'comp-super') {
+    const aj = d.ajustes;
+    abrirHoja(`<h1>Mi súper y mi compra</h1><p class="sub">Dónde compras y cada cuánto. Los menús y las cantidades se calculan para ese periodo.</p>
+      ${campo('Supermercado', `<select name="supermercado">${opts(SUPERS, aj.supermercado)}</select>`)}
+      ${campo('Web para consultar productos', `<input name="web_super" type="url" value="${esc(aj.web_super || '')}" placeholder="https://…" autocomplete="off">`)}
+      ${campo('¿Cada cuánto haces la compra?', `<select name="compra_dias">${opts([['1', 'Cada día'], ['3', 'Cada 2-3 días'], ['7', 'Semanal'], ['14', 'Quincenal']], String(aj.compra_dias || 1))}</select>`)}
+      <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>`, f => {
+      const cambioSuper = f.supermercado !== aj.supermercado, webEditada = (f.web_super || '').trim() !== (aj.web_super || '');
+      aj.supermercado = f.supermercado; aj.compra_dias = Number(f.compra_dias) || 1;
+      aj.web_super = (cambioSuper && !webEditada) ? (WEBS[f.supermercado] ?? '') : (f.web_super || '').trim();
+      S.guardar(); avisar('Guardado.'); return true;
+    });
+    return true;
+  }
   if (act === 'comp-quitar') { const i = d.compra.findIndex(y => y.id === el.dataset.id); if (i >= 0) { quitado = { x: d.compra[i], i }; d.compra.splice(i, 1); S.guardar(); } return true; }
   if (act === 'comp-deshacer') { if (quitado) { d.compra.splice(Math.min(quitado.i, d.compra.length), 0, quitado.x); quitado = null; S.guardar(); } return true; }
   if (act === 'comp-marcar') { quitado = null; const x = d.compra.find(y => y.id === el.dataset.id); if (x) { x.hecho = !x.hecho; S.guardar(); } return true; }

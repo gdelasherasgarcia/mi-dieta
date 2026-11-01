@@ -69,6 +69,10 @@ export function render() {
     ${acordeon('ejercicio', a, `<p class="sub">Avisa a esa hora si hoy aún no has apuntado ejercicio.</p>
       <label class="campo"><span>Ejercicio a las</span><input type="time" data-ajtxt="hora_ejercicio" value="${esc(a.hora_ejercicio || '')}"></label>
       <div class="fila" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn grow" data-act="aviso-ics" data-k="ejercicio">📅 Al calendario del móvil</button><button type="button" class="btn grow" data-act="av-nuevo" data-pre="🚴 Ejercicio" data-grupo="ejercicio">+ Otro aviso</button></div>${listaGrupo('ejercicio', propios)}`)}
+    ${acordeon('peso', a, `<p class="sub">Una vez por semana, en ayunas y a la vez que la tensión. Avisa ese día desde la hora que pongas hasta que apuntes el peso en Salud, donde también ves la gráfica.</p>
+      <label class="campo"><span>Día de la semana</span><select data-ajtxt="dia_peso">${[[1, 'Lunes'], [2, 'Martes'], [3, 'Miércoles'], [4, 'Jueves'], [5, 'Viernes'], [6, 'Sábado'], [0, 'Domingo']].map(([k, t]) => `<option value="${k}" ${Number(a.dia_peso ?? 2) === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="campo"><span>Avisar desde las</span><input type="time" data-ajtxt="hora_peso" value="${esc(a.hora_peso || '08:00')}"></label>
+      <button type="button" class="btn grande" data-nav="salud">❤ Abrir Salud</button>`)}
     <p class="nota-pie"><b>Hecho</b>: marca un aviso tuyo como cumplido hoy. <b>Posponer</b>: vuelve a avisar dentro de 1 hora, 3 horas o mañana. <b>Anular</b>: no avisa más por hoy. <b>Cancelar</b>: apaga ese aviso (o ese tipo) hasta que lo actives otra vez. Solo se ven con la app abierta; con la app cerrada avisa el calendario del móvil.</p>`;
 }
 

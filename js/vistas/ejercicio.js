@@ -1,19 +1,22 @@
 // «Ejercicio de hoy» (dentro de Hoy): se apunta lo que se hace; alimenta el aviso de ejercicio.
 import * as S from '../store.js';
-import { esc } from '../util.js';
+import { esc, esOtroDia } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 
-const ahora = () => new Date().toTimeString().slice(0, 5);
+const ahora = () => esOtroDia() ? '' : new Date().toTimeString().slice(0, 5);          // en otro día no se apunta la hora de ahora
 const TIPOS = [['pedaleadora', 'Pedaleadora', 15], ['paseo', 'Paseo', 20], ['puntillas', 'Levantarme y puntillas', 2]];
 
 export function render() {
   const r = S.dia(), lista = r.ejercicio || [], total = lista.reduce((s, e) => s + (Number(e.min) || 0), 0);
   return `
-    <h2>Ejercicio de hoy <span class="chip ${lista.length ? 'ok' : ''}" style="text-transform:none;letter-spacing:0">${total} min</span></h2>
+    <h2>Ejercicio <span class="chip ${lista.length ? 'ok' : ''}" style="text-transform:none;letter-spacing:0">${total} min</span></h2>
     <div class="item" style="display:block">
-      <div class="det" style="margin-bottom:8px">${lista.length ? lista.map(e => `${esc(e.h)} ${esc(e.nombre)} (${esc(e.min)} min)`).join(' · ') : 'Todavía nada apuntado.'}</div>
-      <div class="fila" style="flex-wrap:wrap">${TIPOS.map(([k, t, m]) => `<button type="button" class="btn mini grow" data-act="eje-add" data-k="${k}">+ ${esc(t)} ${m} min</button>`).join('')}</div>
-      <div class="fila" style="margin-top:8px"><button type="button" class="btn mini grow" data-act="eje-otro">Otro ejercicio…</button>${lista.length ? '<button type="button" class="btn mini" data-act="eje-quitar" aria-label="Quitar el último">↺</button>' : ''}</div>
+      <div class="det" style="margin-bottom:8px">${lista.length ? lista.map(e => `${e.h ? esc(e.h) + ' ' : ''}${esc(e.nombre)} (${esc(e.min)} min)`).join(' · ') : 'Todavía nada apuntado.'}</div>
+      <div class="pila">
+        ${TIPOS.map(([k, t, m]) => `<button type="button" class="btn" data-act="eje-add" data-k="${k}">+ ${esc(t)} · ${m} min</button>`).join('')}
+        <button type="button" class="btn" data-act="eje-otro">Otro ejercicio…</button>
+        ${lista.length ? '<button type="button" class="btn" data-act="eje-quitar">↺ Quitar el último apuntado</button>' : ''}
+      </div>
     </div>`;
 }
 

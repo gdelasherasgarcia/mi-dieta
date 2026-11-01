@@ -101,3 +101,17 @@ h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: 
 
 #hoja .cerrar-hoja { float: right; width: 44px; height: 44px; margin: -8px -6px 4px 8px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: inherit; font-size: 1.05rem; cursor: pointer; }
 .volver { align-self: flex-start; }
+
+/* Unificación: pilas de botones, aviso con «Deshacer», áreas táctiles de al menos 44 px */
+.pila { display: flex; flex-direction: column; gap: 8px; }
+.pila .btn { width: 100%; }
+#aviso .btn.mini { min-height: 36px; min-width: 0; margin-left: 8px; padding: 4px 12px; background: var(--bg); color: var(--ink); }
+.vaso { width: 42px; height: 52px; }
+.ayuda-btn { position: relative; }
+.ayuda-btn::after { content: ''; position: absolute; inset: -8px; }
+#tabs button .ico svg { display: block; }
+#tabs button .ico { height: 26px; }
+
+/* Pantallas secundarias (Recetario, Avisos, Medicinas, Catálogo): se cierran con la misma ✕ redonda que las ventanas */
+.cab-cerrar { display: flex; justify-content: flex-end; margin: -6px 0 4px; }
+.cab-cerrar .cerrar-hoja { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: inherit; font-size: 1.05rem; cursor: pointer; }

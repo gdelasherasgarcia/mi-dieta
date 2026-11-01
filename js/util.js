@@ -4,6 +4,11 @@ export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;'
 const pad = n => String(n).padStart(2, '0');
 export const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const hoy = () => iso(new Date());
+// «Hoy» se puede mirar (y completar) para otro día: ayer, anteayer… Si no se ha elegido ninguno, es el día de hoy.
+let _diaVista = null;
+export const diaVista = () => _diaVista || hoy();
+export const setDiaVista = f => { _diaVista = (f && f !== hoy()) ? f : null; };
+export const esOtroDia = () => !!_diaVista && _diaVista !== hoy();
 
 export function desdeIso(s) {            // 'AAAA-MM-DD' -> Date a las 12:00 locales (evita saltos por horario de verano)
   const [a, m, d] = s.split('-').map(Number);

@@ -1,7 +1,7 @@
 // Pantalla «Salud»: tensión (Omron) y peso semanal, con historial, medias, gráficas pequeñas y tabla para el enfermero.
 import * as S from '../store.js';
 import { esc, nuevoId, hoy, fechaCorta, diaSemana, desdeIso, iso } from '../util.js';
-import { abrirHoja, campo, avisar } from '../ui.js';
+import { abrirHoja, campo, avisar, confirmar } from '../ui.js';
 import { eventoCita, calendario, descargar } from '../ics.js';
 import { diasHasta } from '../util.js';
 import { filaMed, abrirToma } from './hoy.js';
@@ -64,7 +64,7 @@ function chispa(valores, color = 'var(--accent)') {              // gráfica peq
 export function render() {
   const d = S.datos(), s = d.salud;
   const ten = s.tension.slice().sort(porFecha), pes = s.peso.slice().sort(porFecha);
-  const lunes = diaSemana(hoy()) === 'lunes', pesadoHoy = pes.some(p => p.fecha === hoy());
+  const diaP = Number(d.ajustes.dia_peso ?? 2), NOMBRES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'], lunes = new Date().getDay() === diaP, pesadoHoy = pes.some(p => p.fecha === hoy());
   const corte = iso(new Date(Date.now() - 7 * 86400000)), ult = ten.filter(r => r.fecha >= corte);
   const man = ult.filter(r => r.hora && r.hora < '12:00'), noc = ult.filter(r => r.hora && r.hora >= '12:00');
   const m = (l, k) => l.length ? fmt(media(l.map(x => x[k])), 0) : '—';
@@ -72,11 +72,12 @@ export function render() {
 
   return `
     <h1>Salud</h1><p class="sub">Tensión (Omron) y peso. Anota lo que midas.</p>
-    ${lunes && !pesadoHoy ? '<div class="card" style="border-color:var(--warn)"><b>Hoy es lunes: toca pesarte en ayunas.</b></div>' : ''}
+    ${lunes && !pesadoHoy ? '<div class="card" style="border-color:var(--warn)"><b>Hoy es ' + NOMBRES[diaP] + ': toca pesarte en ayunas, a la vez que la tensión.</b></div>' : ''}
     <div class="fila"><button type="button" class="btn main grow" data-act="sal-tension">+ Tensión</button><button type="button" class="btn main grow" data-act="sal-peso">+ Peso</button></div>
 
     <h2>Medicinas de hoy</h2>
     ${(() => { const ms = medicinasDeHoy(d.ajustes.medicinas, hoy()), r = S.dia(), a = ahoraHM(); return ms.length ? ms.map(m => filaMed(m, r, a)).join('') : '<div class="card vacio" style="margin:0">Hoy no toca ninguna medicina.</div>'; })()}
+    <button type="button" class="btn grande" style="margin-top:4px" data-nav="medicinas">💊 Crear o modificar medicinas</button>
 
     <h2>Tensión</h2>
     <div class="card">
@@ -109,21 +110,21 @@ export function render() {
 
     <h2>Para el enfermero</h2>
     <button type="button" class="btn grande" data-act="sal-tabla">Ver tabla de los últimos 30 días</button>
-    <p class="det" style="margin:12px 0 6px">Informe completo para el sanitario (tensión, peso, medicación, agua y ejercicio):</p>
+    <p class="det" style="margin:12px 0 6px"><b>📄 Informe en PDF</b> con tablas y gráficas (tensión, peso, medicación, agua, ejercicio y dieta). Elige el periodo:</p>
     <div class="fila"><button type="button" class="btn main grow" data-act="sal-informe" data-dias="7">7 días</button><button type="button" class="btn main grow" data-act="sal-informe" data-dias="30">30 días</button><button type="button" class="btn main grow" data-act="sal-informe" data-dias="90">90 días</button></div>
     <p class="nota-pie">Esta app no es un médico: guarda tus datos, no los interpreta ni cambia tu medicación.</p>`;
 }
 
-const formT = r => `<h1>${r ? 'Editar' : 'Anotar'} tensión</h1>
-  <div class="dos">${campo('Fecha', `<input name="fecha" type="date" value="${esc(r?.fecha || hoy())}">`)}${campo('Hora', `<input name="hora" type="time" value="${esc(r?.hora || ahora())}">`)}</div>
-  <div class="dos">${campo('Sistólica (alta)', `<input name="sis" type="number" inputmode="numeric" value="${esc(r?.sis ?? '')}">`)}${campo('Diastólica (baja)', `<input name="dia" type="number" inputmode="numeric" value="${esc(r?.dia ?? '')}">`)}</div>
-  ${campo('Pulso', `<input name="pulso" type="number" inputmode="numeric" value="${esc(r?.pulso ?? '')}">`)}
-  ${campo('Nota', `<input name="nota" value="${esc(r?.nota || '')}" placeholder="en ayunas, tras cenar…" autocomplete="off">`)}
+const formT = (r, b = r) => `<h1>${r ? 'Editar' : 'Anotar'} tensión</h1>
+  <div class="dos">${campo('Fecha', `<input name="fecha" type="date" value="${esc(b?.fecha || hoy())}">`)}${campo('Hora', `<input name="hora" type="time" value="${esc(b?.hora || ahora())}">`)}</div>
+  <div class="dos">${campo('Sistólica (alta)', `<input name="sis" type="number" inputmode="numeric" value="${esc(b?.sis ?? '')}">`)}${campo('Diastólica (baja)', `<input name="dia" type="number" inputmode="numeric" value="${esc(b?.dia ?? '')}">`)}</div>
+  ${campo('Pulso', `<input name="pulso" type="number" inputmode="numeric" value="${esc(b?.pulso ?? '')}">`)}
+  ${campo('Nota', `<input name="nota" value="${esc(b?.nota || '')}" placeholder="en ayunas, tras cenar…" autocomplete="off">`)}
   <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
   ${r ? '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>' : ''}`;
-const formP = r => `<h1>${r ? 'Editar' : 'Anotar'} peso</h1>
-  <div class="dos">${campo('Fecha', `<input name="fecha" type="date" value="${esc(r?.fecha || hoy())}">`)}${campo('Peso (kg)', `<input name="kg" type="number" inputmode="decimal" step="0.1" value="${esc(r?.kg ?? '')}">`)}</div>
-  ${campo('Nota', `<input name="nota" value="${esc(r?.nota || '')}" placeholder="en ayunas…" autocomplete="off">`)}
+const formP = (r, b = r) => `<h1>${r ? 'Editar' : 'Anotar'} peso</h1>
+  <div class="dos">${campo('Fecha', `<input name="fecha" type="date" value="${esc(b?.fecha || hoy())}">`)}${campo('Peso (kg)', `<input name="kg" type="number" inputmode="decimal" step="0.1" value="${esc(b?.kg ?? '')}">`)}</div>
+  ${campo('Nota', `<input name="nota" value="${esc(b?.nota || '')}" placeholder="en ayunas…" autocomplete="off">`)}
   <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
   ${r ? '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>' : ''}`;
 
@@ -213,26 +214,63 @@ function informe(dias) {
   return L.join('\n');
 }
 
-function htmlInforme(texto) {
-  const out = [], lineas = texto.split('\n'); let fila = [];
+// Gráfica de líneas en SVG para el informe impreso. series = [{ nombre, color, pts: [[tiempo_ms, valor], …] }]; refs = [{ y, txt }] líneas de referencia.
+function graficaSVG(series, refs = [], unidad = '') {
+  const todos = series.flatMap(x => x.pts); if (todos.length < 2) return '';
+  const W = 700, H = 210, mi = 46, md = 14, ms = 12, mb = 28;
+  const xs = todos.map(p => p[0]), ys = [...todos.map(p => p[1]), ...refs.map(q => q.y)];
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) || x0 + 1;
+  const y0 = Math.floor((Math.min(...ys) - 2) / 5) * 5, paso = Math.max(5, Math.ceil((Math.max(...ys) + 2 - y0) / 4 / 5) * 5), y1 = y0 + 4 * paso;       // marcas del eje en números redondos
+  const X = t => mi + (x1 === x0 ? 0.5 : (t - x0) / (x1 - x0)) * (W - mi - md), Y = v => ms + (1 - (v - y0) / (y1 - y0)) * (H - ms - mb);
+  const f = n => n.toFixed(1), fd = t => fechaCorta(iso(new Date(t)));
+  const ticks = [0, 1, 2, 3, 4].map(i => y0 + (y1 - y0) * i / 4);
+  let g = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="max-width:700px;font:10px Arial,sans-serif">`;
+  g += ticks.map(v => `<line x1="${mi}" x2="${W - md}" y1="${f(Y(v))}" y2="${f(Y(v))}" stroke="#e3ddd0"/><text x="${mi - 6}" y="${f(Y(v) + 3)}" text-anchor="end" fill="#555">${Math.round(v * 10) / 10}</text>`).join('');
+  g += refs.map(q => `<line x1="${mi}" x2="${W - md}" y1="${f(Y(q.y))}" y2="${f(Y(q.y))}" stroke="#999" stroke-dasharray="5 4"/><text x="${W - md}" y="${f(Y(q.y) - 3)}" text-anchor="end" fill="#777">${q.txt}</text>`).join('');
+  for (const se of series) {
+    const pts = se.pts.slice().sort((a, b) => a[0] - b[0]);
+    g += `<polyline fill="none" stroke="${se.color}" stroke-width="2" stroke-linejoin="round" points="${pts.map(p => f(X(p[0])) + ',' + f(Y(p[1]))).join(' ')}"/>`;
+    g += pts.map(p => `<circle cx="${f(X(p[0]))}" cy="${f(Y(p[1]))}" r="2.6" fill="${se.color}"/>`).join('');
+  }
+  g += `<text x="${mi}" y="${H - 8}" fill="#555">${fd(x0)}</text><text x="${W - md}" y="${H - 8}" text-anchor="end" fill="#555">${fd(x1)}</text>`;
+  g += `</svg><div style="font-size:9pt;color:#444;margin-bottom:6px">${series.map(se => `<span style="color:${se.color};font-weight:700">●</span> ${se.nombre}`).join(' &nbsp; ')}${unidad ? ' · ' + unidad : ''}</div>`;
+  return g;
+}
+// Las gráficas del informe impreso (periodo de «dias» días): tensión (alta y baja con sus referencias), pulso y peso.
+function graficasInforme(dias) {
+  const sa = S.datos().salud, fin = hoy(), ini = iso(new Date(Date.now() - (dias - 1) * 86400000)), enP = r => r.fecha >= ini && r.fecha <= fin;
+  const ms = r => desdeIso(r.fecha).getTime() + (r.hora ? (Number(r.hora.slice(0, 2)) * 60 + Number(r.hora.slice(3, 5)) - 720) * 60000 : 0);
+  const t = sa.tension.filter(enP), p = sa.peso.filter(enP);
+  return {
+    tension: graficaSVG([{ nombre: 'Sistólica (alta)', color: '#c0392b', pts: t.map(r => [ms(r), r.sis]) }, { nombre: 'Diastólica (baja)', color: '#1f5fa8', pts: t.map(r => [ms(r), r.dia]) }], [{ y: 130, txt: '130' }, { y: 85, txt: '85' }], 'mmHg; líneas de puntos: referencia general, no médica')
+      + graficaSVG([{ nombre: 'Pulso', color: '#2e7d4f', pts: t.map(r => [ms(r), r.pulso]) }], [], 'latidos por minuto'),
+    peso: graficaSVG([{ nombre: 'Peso', color: '#6a4c93', pts: p.map(r => [ms(r), r.kg]) }], [], 'kg'),
+  };
+}
+
+function htmlInforme(texto, graficas = {}) {
+  const out = [], lineas = texto.split('\n'); let fila = [], seccion = '';
+  const cierraSeccion = () => { const g = /^TENSI/.test(seccion) ? graficas.tension : /^PESO/.test(seccion) ? graficas.peso : ''; if (g) out.push(`<div class="grafica">${g}</div>`); };
   const cierra = () => { if (!fila.length) return; const [cab, ...cuerpo] = fila; out.push('<table><thead><tr>' + cab.map(c => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>' + cuerpo.map(r => '<tr>' + r.map(c => `<td>${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>'); fila = []; };
   lineas.forEach((l, i) => {
     if (l.includes(' | ')) { fila.push(l.split(' | ').map(x => x.trim())); return; }
     cierra();
     if (!l.trim()) return;
     if (i === 0) out.push(`<h1>${esc(l)}</h1>`);
-    else if (/^[A-ZÁÉÍÓÚÑ ]{4,}$/.test(l.replace(/\s*\(.*\)\s*$/, ''))) out.push(`<h2>${esc(l)}</h2>`);
+    else if (/^[A-ZÁÉÍÓÚÑ ]{4,}$/.test(l.replace(/\s*\(.*\)\s*$/, ''))) { cierraSeccion(); seccion = l; out.push(`<h2>${esc(l)}</h2>`); }
     else if (/^- ?/.test(l)) out.push(`<p class="pregunta">${esc(l.replace(/^- ?/, ''))}&nbsp;</p>`);
     else out.push(`<p>${esc(l)}</p>`);
   });
-  cierra();
+  cierra(); cierraSeccion();
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de seguimiento</title><style>
     @page { size: A4; margin: 16mm 14mm; }
     body { font: 11pt/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1c1c1c; }
     h1 { font-size: 18pt; margin: 0 0 4px; } h2 { font-size: 12pt; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #d61e28; color: #8a1118; break-after: avoid; }
     p { margin: 3px 0; } p.pregunta { border-bottom: 1px solid #999; min-height: 22px; margin-top: 10px; }
     table { border-collapse: collapse; width: 100%; margin: 6px 0 10px; font-size: 10pt; break-inside: auto; } tr { break-inside: avoid; }
-    th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; vertical-align: top; } th { background: #f1ece2; }
+    th, td { border: 1px solid #c9c2b3; padding: 4px 7px; text-align: left; vertical-align: top; } th { background: #e8e1d2; } tbody tr:nth-child(even) td { background: #faf7f0; }
+    .grafica { break-inside: avoid; margin: 8px 0 12px; padding: 8px 10px; border: 1px solid #d8d1c2; border-radius: 6px; }
+    h1 { border-bottom: 3px solid #d61e28; padding-bottom: 6px; }
   </style></head><body>${out.join('\n')}</body></html>`;
 }
 
@@ -246,6 +284,35 @@ const formCita = c => `<h1>${c ? 'Editar' : 'Nueva'} cita</h1>
   ${[[10080, '1 semana antes'], [1440, '1 día antes'], [120, '2 horas antes'], [30, '30 minutos antes']].map(([m, t]) => `<label class="fila" style="min-height:44px"><input type="checkbox" name="a${m}" value="1" ${((c?.avisos || [1440, 120]).includes(m)) ? 'checked' : ''} style="width:24px;height:24px"> ${t}</label>`).join('')}
   <div class="fila" style="margin-top:8px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
   ${c ? '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>' : ''}`;
+
+// Anotar o editar una tensión. Si la lectura parece rara, antes de guardarla se pregunta (guardar tal cual o repetir la medida con los datos ya puestos).
+function abrirT(r, borrador) {
+  const s = S.datos().salud;
+  abrirHoja(formT(r, borrador), (f, acc) => {
+    if (acc === 'borrar') { s.tension = s.tension.filter(x => x !== r); S.guardar(); avisar('Lectura borrada.'); return true; }
+    const sis = num(f.sis), dia = num(f.dia), pulso = num(f.pulso);
+    if (sis === null || dia === null || pulso === null) { avisar('Faltan datos: alta, baja y pulso.'); return false; }
+    if (sis < 60 || sis > 260 || dia < 30 || dia > 160 || pulso < 25 || pulso > 220 || dia >= sis) { avisar('Revisa los números: no parecen una lectura válida.'); return false; }
+    const dato = { fecha: f.fecha || hoy(), hora: f.hora || ahora(), sis, dia, pulso, nota: (f.nota || '').trim() };
+    const previas = s.tension.filter(x => x !== r && (x.fecha + (x.hora || '')) < (dato.fecha + (dato.hora || ''))).sort(porFecha);
+    const ev = evalTension(dato, previas);
+    const guardar = () => { if (r) Object.assign(r, dato); else s.tension.push({ id: nuevoId(), ...dato }); S.guardar(); avisar(`${ev.cat}.${ev.lineas[0] ? ' ' + ev.lineas[0] : ''}`); };
+    if (ev.nivel !== 'ok') { confirmar({ titulo: 'Revisa esta lectura', texto: textoAlerta(dato, ev), si: 'Guardar de todos modos', no: 'Repetir la medida', alSi: guardar, alNo: () => abrirT(r, dato) }); return true; }
+    guardar(); return true;
+  });
+}
+function abrirP(r, borrador) {
+  const s = S.datos().salud;
+  abrirHoja(formP(r, borrador), (f, acc) => {
+    if (acc === 'borrar') { s.peso = s.peso.filter(x => x !== r); S.guardar(); avisar('Peso borrado.'); return true; }
+    const kg = num(f.kg); if (kg === null || kg < 30 || kg > 300) { avisar('Revisa el peso en kg.'); return false; }
+    const dato = { fecha: f.fecha || hoy(), kg, nota: (f.nota || '').trim() };
+    const ep = evalPeso(dato, s.peso.filter(x => x !== r && x.fecha <= dato.fecha).sort(porFecha));
+    const guardar = () => { if (r) Object.assign(r, dato); else s.peso.push({ id: nuevoId(), ...dato }); S.guardar(); if (ep.linea) avisar(ep.linea); };
+    if (ep.nivel === 'bad') { confirmar({ titulo: 'Revisa este peso', texto: `Peso ${fmt(kg)} kg. ${ep.linea}\n\nEs un cambio muy grande para ese tiempo: puede ser un error (báscula, ropa, hora del día, un decimal mal puesto). Repite la pesada, en ayunas y con la misma báscula, antes de fiarte.\n\nEs una interpretación mecánica, no médica.\n\n¿Guardarlo de todos modos?`, si: 'Guardar de todos modos', no: 'Repetir la pesada', alSi: guardar, alNo: () => abrirP(r, dato) }); return true; }
+    guardar(); return true;
+  });
+}
 
 export function acciones(act, el) {
   const s = S.datos().salud, dd = S.datos();
@@ -270,42 +337,16 @@ export function acciones(act, el) {
     const dias = Number(el.dataset.dias) || 30;
     abrirHoja(`<h1>Informe de ${dias} días</h1><p class="sub">Puedes escribir tus preguntas al final antes de copiar o imprimir.</p>
       <textarea name="texto" rows="16" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.78rem">${esc(informe(dias))}</textarea>
-      <div class="fila" style="margin-top:8px"><button class="btn main grow" type="submit" value="copiar">Copiar</button><button class="btn grow" type="submit" value="imprimir">Imprimir / PDF</button></div>`, (f, acc) => {
+      <div class="pila" style="margin-top:8px"><button class="btn main" type="submit" value="imprimir">📄 Guardar como PDF / imprimir (con gráficas)</button><button class="btn" type="submit" value="copiar">Copiar el texto</button></div>
+      <p class="det">En «Imprimir», elige «Guardar como PDF» como destino para tenerlo en un archivo.</p>`, (f, acc) => {
       if (acc === 'copiar') { (navigator.clipboard?.writeText(f.texto) || Promise.reject()).then(() => avisar('Informe copiado.')).catch(() => avisar('No se pudo copiar: selecciona el texto a mano.')); return false; }
-      if (acc === 'imprimir') { const w = window.open('', '_blank'); if (!w) { avisar('El navegador bloqueó la ventana de impresión.'); return false; } w.document.write(htmlInforme(f.texto)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return false; }
+      if (acc === 'imprimir') { const w = window.open('', '_blank'); if (!w) { avisar('El navegador bloqueó la ventana de impresión.'); return false; } w.document.write(htmlInforme(f.texto, graficasInforme(dias))); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); return false; }
       return true;
     });
     return true;
   }
   if (act === 'sal-tabla') { abrirHoja(`<h1>Últimos 30 días</h1><p class="sub">Selecciona y copia, o enséñalo tal cual.</p><textarea readonly rows="14" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.8rem">${esc(tabla())}</textarea>`, () => true); return true; }
-  if (act === 'sal-tension' || act === 'sal-edit-t') {
-    const r = act === 'sal-edit-t' ? s.tension.find(x => x.id === el.dataset.id) : null;
-    abrirHoja(formT(r), (f, acc) => {
-      if (acc === 'borrar') { s.tension = s.tension.filter(x => x !== r); S.guardar(); avisar('Lectura borrada.'); return true; }
-      const sis = num(f.sis), dia = num(f.dia), pulso = num(f.pulso);
-      if (sis === null || dia === null || pulso === null) { avisar('Faltan datos: alta, baja y pulso.'); return false; }
-      if (sis < 60 || sis > 260 || dia < 30 || dia > 160 || pulso < 25 || pulso > 220 || dia >= sis) { avisar('Revisa los números: no parecen una lectura válida.'); return false; }
-      const dato = { fecha: f.fecha || hoy(), hora: f.hora || ahora(), sis, dia, pulso, nota: (f.nota || '').trim() };
-      const previas = s.tension.filter(x => x !== r && (x.fecha + (x.hora || '')) < (dato.fecha + (dato.hora || ''))).sort(porFecha);
-      const ev = evalTension(dato, previas);
-      if (ev.nivel !== 'ok' && !confirm(textoAlerta(dato, ev))) return false;
-      if (r) Object.assign(r, dato); else s.tension.push({ id: nuevoId(), ...dato });
-      S.guardar(); avisar(`${ev.cat}.${ev.lineas[0] ? ' ' + ev.lineas[0] : ''}`); return true;
-    });
-    return true;
-  }
-  if (act === 'sal-peso' || act === 'sal-edit-p') {
-    const r = act === 'sal-edit-p' ? s.peso.find(x => x.id === el.dataset.id) : null;
-    abrirHoja(formP(r), (f, acc) => {
-      if (acc === 'borrar') { s.peso = s.peso.filter(x => x !== r); S.guardar(); avisar('Peso borrado.'); return true; }
-      const kg = num(f.kg); if (kg === null || kg < 30 || kg > 300) { avisar('Revisa el peso en kg.'); return false; }
-      const dato = { fecha: f.fecha || hoy(), kg, nota: (f.nota || '').trim() };
-      const ep = evalPeso(dato, s.peso.filter(x => x !== r && x.fecha <= dato.fecha).sort(porFecha));
-      if (ep.nivel === 'bad' && !confirm(`Peso ${fmt(kg)} kg. ${ep.linea}\n\nEs un cambio muy grande para ese tiempo: puede ser un error (báscula, ropa, hora del día, un decimal mal puesto). Repite la pesada, en ayunas y con la misma báscula, antes de fiarte.\n\nEs una interpretación mecánica, no médica.\n\n¿Guardarlo de todos modos?`)) return false;
-      if (r) Object.assign(r, dato); else s.peso.push({ id: nuevoId(), ...dato });
-      S.guardar(); if (ep.linea) avisar(ep.linea); return true;
-    });
-    return true;
-  }
+  if (act === 'sal-tension' || act === 'sal-edit-t') { abrirT(act === 'sal-edit-t' ? s.tension.find(x => x.id === el.dataset.id) : null); return true; }
+  if (act === 'sal-peso' || act === 'sal-edit-p') { abrirP(act === 'sal-edit-p' ? s.peso.find(x => x.id === el.dataset.id) : null); return true; }
   return false;
 }

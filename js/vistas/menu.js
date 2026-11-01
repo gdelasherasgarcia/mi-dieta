@@ -28,14 +28,14 @@ export function render() {
   return `
     <div class="fila sep"><div><h1>Menú</h1><p class="sub" style="margin:0">Próximos ${DIAS} días · ${esc(aj.supermercado || '')}, compra ${aj.compra_dias === 1 ? 'cada día' : 'cada ' + aj.compra_dias + ' días'}</p></div></div>
     <div style="height:10px"></div>
-    <div class="fila"><button type="button" class="btn main grow" data-act="menu-proponer">✨ Proponer menú</button><button type="button" class="btn grow" data-act="menu-lista">🧺 Lista de la compra</button></div>
-    <button type="button" class="btn grande" style="margin:8px 0 12px" data-nav="recetas">📖 Recetario (${d.recetas.filter(r => r.estado === 'aceptada').length} platos)</button>
+    <div class="fila"><button type="button" class="btn main grow" data-act="menu-proponer">✨ Proponer menú</button><button type="button" class="btn grow" data-nav="recetas">📖 Recetario (${d.recetas.filter(r => r.estado === 'aceptada').length})</button></div>
+    <div class="fila" style="margin:8px 0 12px"><button type="button" class="btn grow" data-act="menu-fijas">🍽 Mis comidas fijas</button><button type="button" class="btn grow" data-act="menu-lista">🧺 Qué me falta para el menú</button></div>
     ${dias.map((f, i) => {
       const com = franjaTexto(f, 'comida'), cen = franjaTexto(f, 'cena');
       const sacar = [...enCongelador(com.ids), ...enCongelador(cen.ids)];
-      const fila = (t, x, k) => `<div class="fila" style="align-items:flex-start;margin:6px 0"><span class="det" style="min-width:86px">${t}</span>
-        <span class="grow" style="${x.txt ? '' : 'color:var(--muted)'}">${x.txt ? esc(x.txt) : 'Sin planear'}${x.fuera ? ' <span class="chip warn">fuera</span>' : ''}${x.gen ? ' <span class="chip">propuesto</span>' : ''}${x.fijo ? ' <span class="chip">fijo</span>' : ''}</span>
-        ${k ? `<button type="button" class="btn mini" data-act="menu-cambiar" data-f="${f}" data-k="${k}">Cambiar</button>` : ''}</div>`;
+      const fila = (t, x, k) => `<div style="margin:8px 0">
+        <div class="fila sep"><span class="det">${t}</span>${k ? `<button type="button" class="btn mini" data-act="menu-cambiar" data-f="${f}" data-k="${k}">Cambiar</button>` : ''}</div>
+        <div style="${x.txt ? '' : 'color:var(--muted)'}">${x.txt ? esc(x.txt) : 'Sin planear'}${x.fuera ? ' <span class="chip warn">fuera</span>' : ''}${x.gen ? ' <span class="chip">propuesto</span>' : ''}${x.fijo ? ' <span class="chip">fijo</span>' : ''}</div></div>`;
       return `<div class="card" style="${i === 0 ? 'border-color:var(--accent)' : ''}">
         <div class="fila sep"><b>${i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : diaSemana(f)} <span class="det">${esc(fechaCorta(f))}</span></b></div>
         ${fila('Desayuno', { txt: aj.comida_desayuno, fijo: true })}${fila('Media mañana', { txt: aj.comida_media, fijo: true })}
@@ -150,9 +150,24 @@ export function acciones(act, el) {
     });
     return true;
   }
+  if (act === 'menu-fijas') {
+    const aj = d.ajustes, v = k => esc(aj[k] || '');
+    abrirHoja(`<h1>Mis comidas fijas</h1><p class="sub">Lo que comes cada día igual. Sale en Hoy como lo previsto y el menú lo respeta; la comida es la parte variable y se apunta cada día.</p>
+      ${campo('Desayuno', `<input name="comida_desayuno" value="${v('comida_desayuno')}" autocomplete="off">`)}
+      ${campo('Media mañana', `<input name="comida_media" value="${v('comida_media')}" autocomplete="off">`)}
+      ${campo('Cena', `<input name="comida_cena" value="${v('comida_cena')}" autocomplete="off">`)}
+      ${campo('Tortilla: rellenos que ya puedo comer', `<input name="tortilla_rellenos" value="${v('tortilla_rellenos')}" autocomplete="off">`)}
+      ${campo('Tortilla: siempre lleva', `<input name="tortilla_siempre" value="${v('tortilla_siempre')}" autocomplete="off">`)}
+      ${campo('En estudio (aún no; preguntar al enfermero)', `<input name="tortilla_estudio" value="${v('tortilla_estudio')}" autocomplete="off">`)}
+      <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>`, f => {
+      for (const k of ['comida_desayuno', 'comida_media', 'comida_cena', 'tortilla_rellenos', 'tortilla_siempre', 'tortilla_estudio']) aj[k] = (f[k] || '').trim();
+      S.guardar(); avisar('Comidas fijas guardadas.'); return true;
+    });
+    return true;
+  }
   if (act === 'menu-lista') {
     const dias = Array.from({ length: DIAS }, (_, i) => sumaDias(hoy(), i)), fal = faltantes(dias);
-    abrirHoja(`<h1>Lista de la compra del menú</h1>${fal.length ? `<p class="sub">Esto falta en casa para los platos propuestos. Desmarca lo que no quieras comprar:</p>${fal.map((x, i) => `<label class="fila" style="min-height:44px;align-items:flex-start"><input type="checkbox" name="i${i}" value="1" checked> <span>${esc(x.nombre)} · unos ${Math.round(x.g / 10) * 10} g <span class="det">(${esc(x.dias.map(f => diaSemana(f)).join(', '))})</span></span></label>`).join('')}
+    abrirHoja(`<h1>Qué me falta para el menú</h1><p class="det">Ayuda: la app compara los platos del menú de los próximos ${DIAS} días con lo que tienes en el almacén y te dice qué ingredientes faltan. Lo que dejes marcado se añade a la pestaña Compra.</p>${fal.length ? `<p class="sub">Esto falta en casa para los platos propuestos. Desmarca lo que no quieras comprar:</p>${fal.map((x, i) => `<label class="fila" style="min-height:44px;align-items:flex-start"><input type="checkbox" name="i${i}" value="1" checked> <span>${esc(x.nombre)} · unos ${Math.round(x.g / 10) * 10} g <span class="det">(${esc(x.dias.map(f => diaSemana(f)).join(', '))})</span></span></label>`).join('')}
       <div class="fila"><button class="btn main grow" type="submit" value="anadir">Añadir lo marcado a la lista</button><button class="btn grow" type="submit" value="no">Cerrar</button></div>` : '<div class="card vacio">No falta nada para lo que hay en el menú. O todavía no has propuesto ningún plato.</div>'}`, (g, acc) => {
       if (acc !== 'anadir') return true;
       let n = 0; for (const [i, x] of fal.entries()) { if (g['i' + i] !== '1') continue; if (d.compra.some(c => norm(c.nombre) === norm(x.nombre))) continue; d.compra.push({ id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36), nombre: x.nombre, cantidad: Math.max(50, Math.round(x.g / 50) * 50), unidad: 'g', nota: 'Menú: ' + x.dias.map(f => diaSemana(f)).join(', '), hecho: false }); n++; }

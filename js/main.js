@@ -15,18 +15,28 @@ import { leerCodigo } from './escaner.js';
 import { abrirAyuda } from './ayuda.js';
 import { sincronizar } from './avisos.js';
 import { hoy } from './util.js';
+import { setDiaVista } from './util.js';
 
+const svg = d => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONOS = {
+  hoy: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>'),
+  menu: svg('<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/>'),
+  nevera: svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>'),
+  compra: svg('<path d="M5 9h14l-1.4 9a2 2 0 0 1-2 1.7H8.4a2 2 0 0 1-2-1.7z"/><path d="M9 9l3-5 3 5"/>'),
+  salud: svg('<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.3a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/>'),
+  mas: svg('<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="var(--card)"/><circle cx="15" cy="12" r="2" fill="var(--card)"/><circle cx="8" cy="17" r="2" fill="var(--card)"/>'),
+};
 const PANTALLAS = [
-  { id: 'hoy', titulo: 'Hoy', icono: '☀', vista: Hoy },
-  { id: 'menu', titulo: 'Menú', icono: '📅', vista: Menu },
-  { id: 'nevera', titulo: 'Almacén', icono: '🧊', vista: Nevera },
-  { id: 'compra', titulo: 'Compra', icono: '🧺', vista: Compra },
-  { id: 'salud', titulo: 'Salud', icono: '❤', vista: Salud },
-  { id: 'recetas', titulo: 'Recetario', icono: '📖', vista: Recetas, oculta: true },
-  { id: 'catalogo', titulo: 'Catálogo', icono: '📖', vista: Catalogo, oculta: true },
-  { id: 'medicinas', titulo: 'Medicinas', icono: '💊', vista: Medicinas, oculta: true },
+  { id: 'hoy', titulo: 'Hoy', icono: ICONOS.hoy, vista: Hoy },
+  { id: 'menu', titulo: 'Menú', icono: ICONOS.menu, vista: Menu },
+  { id: 'nevera', titulo: 'Almacén', icono: ICONOS.nevera, vista: Nevera },
+  { id: 'compra', titulo: 'Compra', icono: ICONOS.compra, vista: Compra },
+  { id: 'salud', titulo: 'Salud', icono: ICONOS.salud, vista: Salud },
+  { id: 'recetas', titulo: 'Recetario', icono: '📖', vista: Recetas, oculta: true, padre: 'menu' },
+  { id: 'catalogo', titulo: 'Catálogo', icono: '📖', vista: Catalogo, oculta: true, padre: 'compra' },
+  { id: 'medicinas', titulo: 'Medicinas', icono: '💊', vista: Medicinas, oculta: true, padre: 'salud' },
   { id: 'avisos', titulo: 'Avisos', icono: '🔔', vista: AvisosV, oculta: true, padre: 'hoy' },
-  { id: 'mas', titulo: 'Más', icono: '⚙', vista: Mas },
+  { id: 'mas', titulo: 'Más', icono: ICONOS.mas, vista: Mas },
 ];
 const WEBS_SUPER = { Eroski: 'https://supermercado.eroski.es', Mercadona: 'https://tienda.mercadona.es', Carrefour: 'https://www.carrefour.es/supermercado', Dia: 'https://www.dia.es/compra-online', Alcampo: 'https://www.alcampo.es', Lidl: 'https://www.lidl.es', Otro: '' };
 let actual = 'hoy';
@@ -42,7 +52,7 @@ function dibujar() {
   vista.innerHTML = pant.vista.render();
   if (pant.oculta) {                                                   // pantallas secundarias: botón para volver a la que se venía
     const vuelta = PANTALLAS.find(p => p.id === (pila[pila.length - 1] || pant.padre || 'mas')) || PANTALLAS[0];
-    vista.insertAdjacentHTML('afterbegin', `<button type="button" class="btn mini volver" data-volver style="margin-bottom:10px">← ${vuelta.titulo}</button>`);
+    vista.insertAdjacentHTML('afterbegin', `<div class="cab-cerrar"><button type="button" class="cerrar-hoja" data-volver aria-label="Cerrar y volver a ${vuelta.titulo}">✕</button></div>`);
   }
   vista.scrollTop = y;
   const h1 = vista.querySelector('h1');                              // «?» junto al título: ayuda de la pantalla
@@ -67,7 +77,7 @@ document.addEventListener('click', ev => {
   if (nav) {
     const destino = PANTALLAS.find(p => p.id === nav.dataset.nav);
     if (destino && destino.oculta) { if (destino.id !== actual) pila.push(actual); } else pila = [];
-    actual = nav.dataset.nav;
+    actual = nav.dataset.nav; setDiaVista(null);                // al cambiar de pantalla se vuelve al día de hoy
     try { localStorage.setItem('dieta_pantalla', actual); } catch (e) {}
     document.getElementById('vista').scrollTop = 0; dibujar(); return;
   }

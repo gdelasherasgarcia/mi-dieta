@@ -1,6 +1,6 @@
 // Capa de datos. Hoy guarda en el navegador (localStorage); más adelante se cambia por Google Sheets
 // tocando SOLO este archivo: el resto de la app llama a datos()/guardar() y no sabe dónde viven los datos.
-import { nuevoId, hoy } from './util.js';
+import { nuevoId, hoy, diaVista } from './util.js';
 import { SEMILLA, MEDICINAS } from './semilla.js';
 import { completar } from './producto.js';
 import { CATALOGO } from './catalogo_semilla.js';
@@ -120,7 +120,7 @@ export function guardar() {
 }
 export const alCambiar = f => { oyentes.add(f); return () => oyentes.delete(f); };
 
-export function dia(fecha = hoy()) {                    // registro del día (se crea al pedirlo)
+export function dia(fecha = diaVista()) {                    // registro del día (se crea al pedirlo)
   const r = (_datos.registro[fecha] ||= { agua: 0, meds: {} });
   r.meds ||= {}; return r;
 }

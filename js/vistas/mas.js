@@ -1,7 +1,7 @@
 // Pantalla «Más»: aspecto y copia de seguridad.
 import * as S from '../store.js';
 import { esc, hoy } from '../util.js';
-import { avisar } from '../ui.js';
+import { avisar, confirmar } from '../ui.js';
 
 import { abrirAjustesAgua } from './hoy.js';
 
@@ -21,40 +21,9 @@ export function render() {
   const a = S.datos().ajustes;
   return `
     <h1>Más</h1>
-    <p class="sub">Aspecto, compra y copia de seguridad.</p>
+    <p class="sub">Aspecto, manual y copia de seguridad.</p>
     ${grupo('Tamaño de letra', 'fuente', [['normal', 'Normal'], ['grande', 'Grande'], ['enorme', 'Enorme']], a.fuente)}
     ${grupo('Tema', 'tema', [['auto', 'Automático'], ['claro', 'Claro'], ['oscuro', 'Oscuro']], a.tema)}
-    <h2>Avisos</h2>
-    <div class="card">
-      <p style="margin-top:0" class="sub">Crear tus avisos, activar o apagar cada tipo, las horas y los archivos de calendario del móvil están ahora en su propia pantalla.</p>
-      <button type="button" class="btn grande" data-nav="avisos">🔔 Abrir Avisos</button>
-    </div>
-
-    <h2>Mis comidas fijas</h2>
-    <div class="card">
-      ${[['comida_desayuno', 'Desayuno'], ['comida_media', 'Media mañana'], ['comida_cena', 'Cena']].map(([k, t]) => `<label class="campo"><span>${t}</span><input data-ajtxt="${k}" value="${esc(a[k] || '')}" autocomplete="off"></label>`).join('')}
-      <label class="campo"><span>Tortilla: rellenos que ya puedo comer</span><input data-ajtxt="tortilla_rellenos" value="${esc(a.tortilla_rellenos || '')}" autocomplete="off"></label>
-      <label class="campo"><span>Tortilla: siempre lleva</span><input data-ajtxt="tortilla_siempre" value="${esc(a.tortilla_siempre || '')}" autocomplete="off"></label>
-      <label class="campo"><span>En estudio (aún no; preguntar al enfermero)</span><input data-ajtxt="tortilla_estudio" value="${esc(a.tortilla_estudio || '')}" autocomplete="off"></label>
-      <p class="sub" style="margin:0">Lo previsto sale en Hoy. La comida es variable: se apunta cada día.</p>
-    </div>
-
-    <h2>Mi compra</h2>
-    <div class="card">
-      <label class="campo"><span>Supermercado</span><select data-ajtxt="supermercado">${SUPERS.map(x => `<option ${a.supermercado === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-      <label class="campo"><span>Web para consultar productos</span><input type="url" data-ajtxt="web_super" value="${esc(a.web_super || '')}" placeholder="https://…" autocomplete="off"></label>
-      <p class="sub" style="margin:0 0 4px">¿Cada cuánto haces la compra? Los menús y las cantidades se calculan para ese periodo.</p>
-    </div>
-    ${grupo('Periodicidad de la compra', 'compra_dias', [['1', 'Cada día'], ['3', 'Cada 2-3 días'], ['7', 'Semanal'], ['14', 'Quincenal']], String(a.compra_dias || 1))}
-    <h2>Agua</h2>
-    <div class="card"><p style="margin:0 0 8px">Vaso de <b>${Number(a.vaso_ml) || 250} ml</b> · objetivo <b>${(((Number(a.objetivo_ml) || a.objetivo_vasos * (Number(a.vaso_ml) || 250)) / 1000)).toLocaleString('es-ES', { maximumFractionDigits: 2 })} l</b> al día (${a.objetivo_vasos} vasos).</p>
-      <button type="button" class="btn grande" data-act="agua-ajustes">Cambiar el vaso o el objetivo</button></div>
-
-    <h2>Más pantallas</h2>
-    <div class="card">
-      <button type="button" class="btn grande" data-nav="catalogo">📖 Catálogo de productos</button>
-      <button type="button" class="btn grande" data-nav="medicinas" style="margin-top:10px">💊 Medicinas</button>
-    </div>
 
     <h2>Ayuda</h2>
     <div class="card"><button type="button" class="btn main grande" data-ayuda="manual">📖 Manual completo de la app</button>
@@ -62,10 +31,6 @@ export function render() {
 
     <h2>Copia de seguridad</h2>
     ${location.hostname === 'localhost' ? `    <div class="card">
-      <p style="margin-top:0"><b>Prueba en el móvil:</b> si estás en casa con el portátil encendido, trae aquí sus datos de un toque (sustituye los de este dispositivo).</p>
-      <button type="button" class="btn grande" data-act="traer-portatil">📥 Traer los datos del portátil</button>
-    </div>
-    <div class="card">
       <p style="margin-top:0"><b>Copia automática:</b> ${S.ultimaCopia ? 'última ' + esc(S.ultimaCopia.dia) + ' a las ' + esc(S.ultimaCopia.hora) : 'todavía ninguna'}.<br><span class="sub" style="margin:0">Se guarda sola en la carpeta «copias» de la app (una por día, las últimas 30).</span></p>
       <button type="button" class="btn grande" data-act="copia-ahora">Hacer una copia ahora</button>
     </div>` : ''}
@@ -83,13 +48,6 @@ export function render() {
 
 export function acciones(act, el) {
   const d = S.datos();
-  if (act === 'traer-portatil') {
-    if (!confirm('Esto sustituye TODOS los datos de este dispositivo por los del portátil (la última copia). ¿Seguimos?')) return false;
-    fetch('/_traer_datos.json', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('El portátil no tiene preparada esa copia.'); return r.text(); })
-      .then(t => { S.importar(t); aplicarAspecto(); avisar('Datos del portátil cargados.'); })
-      .catch(e => avisar(e.message || 'No se pudo traer la copia.'));
-    return false;
-  }
   if (act === 'copia-ahora') { S.copiarAhora().then(j => avisar(j.ok ? `Copia hecha (${j.dia} ${j.hora}).` : 'No se pudo: ' + (j.error || 'error'))); return false; }
   if (act === 'agua-ajustes') { abrirAjustesAgua(); return false; }
   if (act === 'aj') {
@@ -103,8 +61,8 @@ export function acciones(act, el) {
     avisar('Copia guardada en Descargas.'); return true;
   }
   if (act === 'borrar-todo') {
-    if (confirm('¿Borrar TODOS los datos de esta app? No se puede deshacer (haz antes una copia).')) { S.borrarTodo(); aplicarAspecto(); avisar('Datos borrados.'); }
-    return true;
+    confirmar({ titulo: 'Borrar todos los datos', texto: 'Se borran TODOS los datos de esta app y no se puede deshacer. Haz antes una copia.', si: 'Sí, borrar todo', no: 'No, conservar', peligro: true, alSi: () => { S.borrarTodo(); aplicarAspecto(); avisar('Datos borrados.'); } });
+    return false;
   }
   return false;
 }

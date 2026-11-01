@@ -5,9 +5,9 @@ import { esc, diasHasta, fechaCorta } from './util.js';
 import { quedan, diasQueQuedan, avisoStock, ahoraHM, medicinasDeHoy, esPeriodica } from './medicinas.js';
 import { hoy } from './util.js';
 
-export const TIPOS = [['meds', 'Medicinas sin tomar'], ['propios', 'Mis avisos'], ['stock', 'Pastillas que se acaban'], ['citas', 'Citas con médico o enfermero'], ['agua', 'Agua'], ['comidas', 'Desayuno, comida y cena sin apuntar'], ['ejercicio', 'Ejercicio']];
+export const TIPOS = [['meds', 'Medicinas sin tomar'], ['propios', 'Mis avisos'], ['stock', 'Pastillas que se acaban'], ['citas', 'Citas con médico o enfermero'], ['agua', 'Agua'], ['comidas', 'Desayuno, comida y cena sin apuntar'], ['ejercicio', 'Ejercicio'], ['peso', 'Pesarte (una vez por semana)']];
 export const estaActivo = (aj, k) => activo(aj, k);
-const activo = (aj, k) => (aj.avisos && aj.avisos[k] !== undefined) ? aj.avisos[k] : (k === 'stock' || k === 'citas' || k === 'meds' || k === 'propios');
+const activo = (aj, k) => (aj.avisos && aj.avisos[k] !== undefined) ? aj.avisos[k] : (k === 'stock' || k === 'citas' || k === 'meds' || k === 'propios' || k === 'peso');
 
 // ¿Toca hoy este aviso propio? (una fecha concreta, unos días de la semana o todos los días)
 const toca = p => p.unico ? p.unico === hoy() : (!p.dias || !p.dias.length || p.dias.includes(new Date().getDay()));
@@ -36,6 +36,8 @@ export function calcular() {
     if (p.activo === false || !toca(p)) continue;
     if (mins >= mas(p.hora, 0)) out.push({ tipo: 'propios', clave: 'propio:' + p.id, id: p.id, nivel: 'bad', texto: `${p.titulo} (${p.hora})${p.nota ? ' · ' + p.nota : ''}` });
   }
+  if (activo(aj, 'peso') && new Date().getDay() === Number(aj.dia_peso ?? 2) && mins >= mas(aj.hora_peso || '08:00', 0) && !(d.salud?.peso || []).some(x => x.fecha === hoy()))      // día de pesarse (por defecto, martes) y aún no apuntado
+    out.push({ tipo: 'peso', clave: 'peso', nivel: 'warn', texto: 'Hoy toca pesarte, en ayunas y a la vez que la tensión. Apúntalo en Salud.' });
   if (activo(aj, 'comidas')) for (const [k, t, hk] of [['desayuno', 'el desayuno', 'hora_desayuno'], ['media', 'la media mañana', 'hora_media'], ['comida', 'la comida', 'hora_comida'], ['cena', 'la cena', 'hora_cena']])
     if (!(com[k] && com[k].estado) && mins >= mas(aj[hk], 60)) out.push({ tipo: 'comidas', clave: 'comida:' + k, nivel: 'warn', texto: `Aún no has apuntado ${t} de hoy.` });
   if (activo(aj, 'agua') && h >= 11 && h <= 22) {
@@ -84,6 +86,7 @@ function proximo(posp) {
     const x = parte(aj[hk], 60); if (!(com[k] && com[k].estado) && x > mins && x < 1440) cand.push({ texto: `apuntar ${t}`, cuando: hoy() + 'T' + hhmm(x) });
   }
   if (activo(aj, 'ejercicio') && !(reg.ejercicio && reg.ejercicio.length)) { const x = parte(aj.hora_ejercicio, 0); if (x > mins && x < 1440) cand.push({ texto: 'ejercicio de hoy', cuando: hoy() + 'T' + hhmm(x) }); }
+  if (activo(aj, 'peso') && new Date().getDay() === Number(aj.dia_peso ?? 2) && !(d.salud?.peso || []).some(x => x.fecha === hoy())) { const x = parte(aj.hora_peso || '08:00', 0); if (x > mins && x < 1440) cand.push({ texto: 'pesarte en ayunas', cuando: hoy() + 'T' + hhmm(x) }); }
   if (activo(aj, 'propios')) for (const p of d.avisos_propios || []) {                                  // avisos propios que aún no han llegado a su hora
     if (p.activo === false || !toca(p) || (estados()['propio:' + p.id] || {}).h === hoy()) continue;
     const x = parte(p.hora, 0); if (x > mins && x < 1440) cand.push({ texto: p.titulo, cuando: hoy() + 'T' + hhmm(x) });
