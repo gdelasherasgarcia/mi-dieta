@@ -1,6 +1,6 @@
 // Pantalla «Almacén de comida»: lo que hay en casa, con caducidades. Ordena por lo que antes hay que gastar.
 import * as S from '../store.js';
-import { esc, diasHasta, fechaCorta, nuevoId } from '../util.js';
+import { esc, diasHasta, fechaCorta, nuevoId, hoy } from '../util.js';
 import { abrirHoja, campo, avisar, botonFoto } from '../ui.js';
 import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
 
@@ -8,6 +8,69 @@ const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', '
 const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa'];
 const CONTABLES = new Set(['ud', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa']);
 let filtro = 'todo';
+
+// ── Botiquín: medicamentos y productos de salud con caducidad. Va aparte de la comida (d.botiquin) para no mezclarse con los menús ni con «gastar primero». ──
+const UNID_BOT = ['envase', 'ud', 'comprimidos', 'ml', 'g', 'sobres', 'bote'];
+const SIGRE = 'Retirado. Llévalo al punto SIGRE de la farmacia; no lo tires a la basura.';
+const activosBot = d => (d.botiquin || []).filter(x => !x.baja);
+export function botiquinPendiente(d) {                                  // para Hoy: caducados y que caducan en 30 días
+  return activosBot(d).map(p => ({ p, n: diasHasta(caducidadEfectiva(p)) })).filter(x => x.n !== null && x.n <= 30).sort((a, b) => a.n - b.n);
+}
+export function altaBotiquin(d, datos) { (d.botiquin ||= []).push({ id: nuevoId(), tipo: 'sin', abierto: null, dias_abierto: null, nota: '', ...datos }); }
+function etiquetaBot(p) {
+  const f = caducidadEfectiva(p), n = diasHasta(f), ab = caducaPorApertura(p) ? 'abierto: ' : '';
+  if (n === null) return { txt: 'sin fecha', clase: '' };
+  if (n < 0) return { txt: `${ab}caducado hace ${-n} d`, clase: 'bad' };
+  if (n === 0) return { txt: `${ab}caduca hoy`, clase: 'warn' };
+  if (n <= 30) return { txt: `${ab}caduca en ${n} d`, clase: 'warn' };
+  return { txt: ab + fechaCorta(f), clase: 'ok' };
+}
+function detalleBot(p) {
+  const partes = [`${fmt(p.cantidad)} ${p.unidad}`, p.tipo === 'con' ? 'con receta' : 'sin receta'];
+  if (p.abierto) partes.push(`abierto el ${fechaCorta(p.abierto)}${Number(p.dias_abierto) > 0 ? ` (consumir en ${p.dias_abierto} d)` : ''}`);
+  if (p.nota) partes.push(p.nota);
+  return partes.map(esc).join(' · ');
+}
+function htmlBotiquin(d) {
+  const lista = activosBot(d).sort((a, b) => cmp(diasHasta(caducidadEfectiva(a)), diasHasta(caducidadEfectiva(b))) || a.nombre.localeCompare(b.nombre, 'es'));
+  const fila = p => {
+    const c = etiquetaBot(p), n = diasHasta(caducidadEfectiva(p)), cad = n !== null && n < 0;
+    return `<div class="item ${cad ? 'caducado' : n !== null && n <= 30 ? 'alerta' : ''}">
+      <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="bot-editar" data-id="${p.id}">
+        <div class="nom">${esc(p.nombre)}</div><div class="det">${detalleBot(p)}</div></button>
+      <span class="chip ${c.clase}">${esc(c.txt)}</span>${cad ? `<button type="button" class="btn mini" data-act="bot-baja" data-id="${p.id}">Retirar</button>` : ''}</div>`;
+  };
+  const bajas = (d.botiquin || []).filter(x => x.baja).sort((a, b) => b.baja.localeCompare(a.baja));
+  return (lista.map(fila).join('') || '<div class="card vacio">El botiquín está vacío. Pulsa «Añadir».</div>')
+    + '<p class="nota-pie">La app solo avisa de la fecha que escribes: ante la duda con un medicamento, pregunta en la farmacia. Lo caducado se lleva al punto SIGRE de la farmacia, no a la basura.</p>'
+    + (bajas.length ? `<details style="margin-top:10px"><summary style="min-height:44px;display:flex;align-items:center;font-weight:700">Dados de baja (${bajas.length})</summary>${bajas.map(p => `<div class="item"><div class="grow"><div class="nom">${esc(p.nombre)}</div><div class="det">${esc(p.motivo || 'baja')} · ${esc(fechaCorta(p.baja))}</div></div></div>`).join('')}</details>` : '');
+}
+function formularioBot(p) {
+  const nuevo = !p;
+  p = p || { nombre: '', tipo: 'sin', cantidad: 1, unidad: 'envase', caducidad: '', abierto: '', dias_abierto: '', nota: '' };
+  const v = x => esc(x ?? '');
+  const opts = (lista, sel) => lista.map(x => { const [k, t] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t)}</option>`; }).join('');
+  return `
+    <h1>${nuevo ? 'Añadir al botiquín' : 'Editar'}</h1>
+    ${campo('Producto', `<input name="nombre" required value="${v(p.nombre)}" autocomplete="off" list="lista-botiquin">`)}
+    <datalist id="lista-botiquin">${[...new Set((S.datos().botiquin || []).map(x => x.nombre))].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    ${campo('Tipo', `<select name="tipo">${opts([['sin', 'Sin receta'], ['con', 'Con receta']], p.tipo)}</select>`)}
+    <div class="dos">
+      ${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${v(p.cantidad)}">`)}
+      ${campo('Unidad', `<select name="unidad">${opts(UNID_BOT, p.unidad)}</select>`)}
+    </div>
+    ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date" value="${v(p.caducidad)}">`)}
+    <details ${p.abierto ? 'open' : ''} style="margin-bottom:12px">
+      <summary style="min-height:44px;display:flex;align-items:center;font-weight:700">Si caduca tras abrirlo (colirio, jarabe, pomada…)</summary>
+      <div class="dos">
+        ${campo('Abierto el', `<input name="abierto" type="date" value="${v(p.abierto)}">`)}
+        ${campo('Consumir en (días)', `<input name="dias_abierto" type="number" inputmode="numeric" min="1" step="1" value="${v(p.dias_abierto)}">`)}
+      </div>
+    </details>
+    ${campo('Nota', `<input name="nota" value="${v(p.nota)}" autocomplete="off">`)}
+    <div class="fila" style="margin-top:6px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
+    ${nuevo ? '' : '<div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="baja-cad">Dar de baja: caducado</button><button class="btn grow" type="submit" value="baja-gast">Gastado</button></div><button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}`;
+}
 
 const cmp = (a, b) => (a === null ? 1 : b === null ? -1 : a - b);
 const fmt = n => Number(n).toLocaleString('es-ES', { maximumFractionDigits: 2 });
@@ -33,10 +96,11 @@ function detalle(p) {
 
 export function render() {
   const d = S.datos();
+  try { if (sessionStorage.getItem('ir_botiquin')) { filtro = 'botiquin'; sessionStorage.removeItem('ir_botiquin'); } } catch (e) {}   // Hoy → «Abrir el botiquín»
   const lista = d.nevera
     .filter(p => filtro === 'todo' || p.ubicacion === filtro)
     .sort((a, b) => cmp(diasHasta(caducidadEfectiva(a)), diasHasta(caducidadEfectiva(b))) || a.nombre.localeCompare(b.nombre, 'es'));
-  const filtros = [['todo', 'Todo'], ...UBIC].map(([k, t]) =>
+  const filtros = [['todo', 'Todo'], ...UBIC, ['botiquin', 'Botiquín']].map(([k, t]) =>
     `<button type="button" class="filtro" data-act="filtro" data-k="${k}" aria-pressed="${filtro === k}">${t}</button>`).join('');
 
   const tarjetas = lista.map(p => {
@@ -52,11 +116,11 @@ export function render() {
   }).join('');
 
   return `
-    <div class="fila sep"><div><h1>Almacén de comida</h1><p class="sub" style="margin:0">${d.nevera.length} productos en casa</p></div>
+    <div class="fila sep"><div><h1>Almacén de comida</h1><p class="sub" style="margin:0">${filtro === 'botiquin' ? activosBot(d).length + ' en el botiquín' : d.nevera.length + ' productos en casa'}</p></div>
       <button type="button" class="btn main" data-act="anadir">+ Añadir</button></div>
     <div style="height:12px"></div>
     <div class="filtros" role="group" aria-label="Filtrar por sitio">${filtros}</div>
-    ${tarjetas || '<div class="card vacio">No hay nada aquí. Pulsa «Añadir».</div>'}
+    ${filtro === 'botiquin' ? htmlBotiquin(d) : (tarjetas || '<div class="card vacio">No hay nada aquí. Pulsa «Añadir».</div>')}
   `;
 }
 
@@ -97,15 +161,60 @@ function formulario(p) {
       <button class="btn main grow" type="submit" value="guardar">Guardar</button>
       ${nuevo ? '' : '<button class="btn" type="submit" value="gastado">Gastado</button>'}
     </div>
-    ${nuevo ? '' : '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}
+    ${nuevo ? '' : (p.unidad === 'raciones' ? '' : '<button class="btn grande" style="margin-top:10px" type="submit" value="dividir">✂ Dividir en raciones…</button>') + '<button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}
   `;
 }
 
 const numOrNull = s => (s === undefined || s === null || String(s).trim() === '') ? null : (Number(String(s).replace(',', '.')) || 0);
 
+// Abrir un envase y repartirlo: unas raciones al congelador, otras se gastan ahora y el resto se queda en la nevera ya abierto.
+function abrirDividir(p) {
+  const d = S.datos();
+  abrirHoja(`<h1>Dividir en raciones</h1><p class="sub">${esc(p.nombre)}</p>
+    <div class="dos">${campo('Raciones que salen', `<input name="total" type="number" inputmode="numeric" min="1" step="1" value="4">`)}${campo('Peso de cada ración (g, opcional)', `<input name="g" type="number" inputmode="decimal" min="0" step="any" value="${p.envase ? Math.round(Number(p.envase) / 4) : ''}">`)}</div>
+    <div class="dos">${campo('Van al congelador', `<input name="cong" type="number" inputmode="numeric" min="0" step="1" value="3">`)}${campo('Las gastas ahora', `<input name="gasto" type="number" inputmode="numeric" min="0" step="1" value="1">`)}</div>
+    ${campo('Meses que aguanta congelado (estimación)', `<input name="meses" type="number" inputmode="decimal" min="0" step="any" value="2">`)}
+    <p class="det">Las del congelador caducan en los meses que indiques (con 0, heredan la fecha del envase${p.caducidad ? ` — ${esc(fechaCorta(p.caducidad))}` : ', que no tiene'}). Lo que sobre se queda en la nevera, abierto hoy${p.dias_abierto ? ` (consumir en ${esc(p.dias_abierto)} d)` : ' (consumir en 2 d)'}.</p>
+    ${Number(p.cantidad) > 1.0001 ? `<p class="det">Tienes ${fmt(p.cantidad)} ${esc(p.unidad)}: se divide uno y los demás se quedan como están.</p>` : ''}
+    <div class="fila"><button class="btn main grow" type="submit" value="dividir">Dividir</button></div>`, f => {
+    const total = Math.round(Number(f.total)), cong = Math.round(Number(f.cong) || 0), gasto = Math.round(Number(f.gasto) || 0), resto = total - cong - gasto;
+    if (!(total >= 1) || cong < 0 || gasto < 0 || resto < 0) { avisar(`Las raciones no cuadran: salen ${total || 0} y repartes ${cong + gasto}.`); return false; }
+    const g = numOrNull(f.g), cant = Number(p.cantidad);
+    if (cant > 1.0001) p.cantidad = Math.round((cant - 1) * 1000) / 1000; else d.nevera = d.nevera.filter(x => x !== p);      // se abre un envase
+    const poner = (cantidad, ubicacion, extra) => {
+      const ya = !extra.abierto && d.nevera.find(x => x.nombre === p.nombre && x.unidad === 'raciones' && x.ubicacion === ubicacion && !x.abierto && (x.caducidad || null) === (extra.caducidad !== undefined ? extra.caducidad : (p.caducidad || null)));
+      if (ya) ya.cantidad = Number(ya.cantidad) + cantidad;
+      else d.nevera.push(completar({ id: nuevoId(), nombre: p.nombre, cantidad, unidad: 'raciones', ubicacion, caducidad: p.caducidad || null, nota: '', marca: p.marca || '', envase: g, escurrido: false,
+        sal100: p.sal100 ?? null, ean: p.ean || null, racion: g, abierto: null, dias_abierto: null, v2: true, ...extra }));
+    };
+    const meses = Number(String(f.meses).replace(',', '.')) || 0;
+    let cadCong = p.caducidad || null;
+    if (meses > 0) { const t = new Date(); t.setDate(t.getDate() + Math.round(meses * 30.4)); cadCong = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); }
+    if (cong) poner(cong, 'congelador', { nota: 'congelado el ' + fechaCorta(hoy()), caducidad: cadCong });
+    if (resto) poner(resto, 'nevera', { abierto: hoy(), dias_abierto: Number(p.dias_abierto) || 2 });
+    S.guardar();
+    avisar(`${total} raciones: ${cong} al congelador${gasto ? ` · ${gasto} gastada${gasto > 1 ? 's' : ''}` : ''}${resto ? ` · ${resto} en la nevera` : ''}.`); return true;
+  });
+}
+
 export function acciones(act, el) {
   const d = S.datos();
   if (act === 'filtro') { filtro = el.dataset.k; return true; }
+  if (act === 'anadir' && filtro === 'botiquin') act = 'bot-nuevo';
+  if (act === 'bot-baja') { const p = (d.botiquin || []).find(x => x.id === el.dataset.id); if (p) { p.baja = hoy(); p.motivo = 'caducado'; S.guardar(); avisar(SIGRE); } return true; }
+  if (act === 'bot-nuevo' || act === 'bot-editar') {
+    const p = act === 'bot-editar' ? (d.botiquin || []).find(x => x.id === el.dataset.id) : null;
+    abrirHoja(formularioBot(p), (f, acc) => {
+      if (acc === 'borrar') { d.botiquin = d.botiquin.filter(x => x !== p); S.guardar(); avisar('Borrado.'); return true; }
+      if (acc === 'baja-cad' || acc === 'baja-gast') { p.baja = hoy(); p.motivo = acc === 'baja-cad' ? 'caducado' : 'gastado'; S.guardar(); avisar(acc === 'baja-cad' ? SIGRE : 'Marcado como gastado.'); return true; }
+      const nombre = (f.nombre || '').trim(); if (!nombre) { avisar('Falta el nombre del producto.'); return false; }
+      const datos = { nombre, tipo: f.tipo === 'con' ? 'con' : 'sin', cantidad: Number(String(f.cantidad).replace(',', '.')) || 0, unidad: f.unidad,
+        caducidad: f.caducidad || null, abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), nota: (f.nota || '').trim() };
+      if (p) Object.assign(p, datos); else altaBotiquin(d, datos);
+      S.guardar(); return true;
+    });
+    return true;
+  }
   if (act === 'menos') {
     const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
     p.cantidad = Math.max(0, Number(p.cantidad) - 1);
@@ -115,6 +224,7 @@ export function acciones(act, el) {
   if (act === 'anadir' || act === 'editar') {
     const p = act === 'editar' ? d.nevera.find(x => x.id === el.dataset.id) : null;
     abrirHoja(formulario(p), (f, accion) => {
+      if (accion === 'dividir') { setTimeout(() => abrirDividir(p), 0); return true; }               // se abre otra ventana cuando esta se haya cerrado
       if (accion === 'borrar' || accion === 'gastado') {
         d.nevera = d.nevera.filter(x => x !== p); S.guardar(); avisar(accion === 'gastado' ? 'Marcado como gastado.' : 'Borrado.'); return true;
       }
