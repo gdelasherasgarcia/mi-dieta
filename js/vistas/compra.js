@@ -6,12 +6,14 @@ import { fichaCatalogo } from './catalogo.js';
 import { completar } from '../producto.js';
 import { quedan } from '../medicinas.js';
 import { hoy } from '../util.js';
+import { altaBotiquin } from './nevera.js';
 
 const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'paquete', 'bolsa', 'bote', 'lonchas', 'raciones'];
 const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', 'Despensa']];
 const SECCIONES = [['super', '🛒 Súper'], ['farmacia', '💊 Farmacia'], ['otros', '📦 Otros']];
 const seccion = x => x.seccion || 'super';
 const PERIODO = { 1: 'cada día', 3: 'cada 2-3 días', 7: 'cada semana', 14: 'cada 2 semanas' };
+let quitado = null;                                                  // último artículo quitado de la lista, para poder deshacerlo
 const ubicDe = c => !c ? 'nevera' : c.categoria === 'congelado' ? 'congelador' : c.categoria === 'despensa' ? 'despensa' : 'nevera';
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 const opts = (lista, sel) => lista.map(x => { const [k, t] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t)}</option>`; }).join('');
@@ -29,7 +31,9 @@ export function render() {
       <button type="button" class="btn mini" data-act="comp-marcar" data-id="${esc(x.id)}" aria-label="Marcar como comprado" aria-pressed="${!!x.hecho}">${x.hecho ? '✔' : '○'}</button>
       <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="comp-editar" data-id="${esc(x.id)}">
         <div class="nom" style="${x.hecho ? 'text-decoration:line-through' : ''}">${esc(x.nombre)}</div>
-        <div class="det">${esc([x.cantidad ? x.cantidad + ' ' + x.unidad : '', x.nota].filter(Boolean).join(' · '))}</div></button></div>`).join(''); }).join('') || '<div class="card vacio">La lista está vacía. Pulsa «+ Añadir».</div>'}
+        <div class="det">${esc([x.cantidad ? x.cantidad + ' ' + x.unidad : '', x.nota].filter(Boolean).join(' · '))}</div></button>
+      <button type="button" class="btn mini" data-act="comp-quitar" data-id="${esc(x.id)}" aria-label="Quitar de la lista">✕</button></div>`).join(''); }).join('') || '<div class="card vacio">La lista está vacía. Pulsa «+ Añadir».</div>'}
+    ${quitado ? `<div class="card"><div class="fila sep"><span>Quitado: <b>${esc(quitado.x.nombre)}</b></span><button type="button" class="btn mini" data-act="comp-deshacer">Deshacer</button></div></div>` : ''}
     ${hechos.length ? `<button type="button" class="btn ok grande" data-act="comp-pasar" style="margin-top:12px">Entrar en casa lo marcado (${hechos.length})</button>` : ''}
     <p class="nota-pie">«Pasar a casa» te va preguntando cantidad, sitio y caducidad de cada producto marcado; solo sale de la lista cuando lo guardas en casa.</p>`;
 }
@@ -101,6 +105,23 @@ function asistente(ids, total, hechos) {
       });
       return;
     }
+    if (seccion(x) === 'farmacia') {                                     // medicamento o producto de botiquín: entra al botiquín
+      abrirHoja(`<h1>Entra al botiquín</h1><p class="sub">${esc(x.nombre)}</p>
+        <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${esc(x.cantidad || 1)}">`)}${campo('Unidad', `<select name="unidad">${opts(['envase', 'ud', 'comprimidos', 'ml', 'g', 'sobres', 'bote'], 'envase')}</select>`)}</div>
+        ${campo('Tipo', `<select name="tipo">${opts([['sin', 'Sin receta'], ['con', 'Con receta']], 'sin')}</select>`)}
+        ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date">`)}
+        <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar en el botiquín</button></div>
+        <div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="nolo">No lo traje</button><button class="btn grow" type="submit" value="saltar">Luego</button><button class="btn grow" type="submit" value="recado">Era un recado</button></div>`, (f, acc) => {
+        let h = hechos;
+        if (acc === 'guardar') {
+          const cantidad = Number(String(f.cantidad).replace(',', '.')); if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
+          altaBotiquin(d, { nombre: x.nombre, tipo: f.tipo === 'con' ? 'con' : 'sin', cantidad, unidad: f.unidad, caducidad: f.caducidad || null }); d.compra = d.compra.filter(y => y !== x); S.guardar(); h++;
+        } else if (acc === 'recado') { d.compra = d.compra.filter(y => y !== x); S.guardar(); h++; }
+        else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
+        setTimeout(() => asistente(ids, total, h), 0); return true;
+      });
+      return;
+    }
     d.compra = d.compra.filter(y => y !== x); S.guardar(); asistente(ids, total, hechos + 1); return;      // un recado normal: se tacha y listo
   }
   const cat = S.buscarCatalogo(x.nombre), n = total - ids.length;
@@ -124,7 +145,9 @@ function asistente(ids, total, hechos) {
 
 export function acciones(act, el) {
   const d = S.datos();
-  if (act === 'comp-marcar') { const x = d.compra.find(y => y.id === el.dataset.id); if (x) { x.hecho = !x.hecho; S.guardar(); } return true; }
+  if (act === 'comp-quitar') { const i = d.compra.findIndex(y => y.id === el.dataset.id); if (i >= 0) { quitado = { x: d.compra[i], i }; d.compra.splice(i, 1); S.guardar(); } return true; }
+  if (act === 'comp-deshacer') { if (quitado) { d.compra.splice(Math.min(quitado.i, d.compra.length), 0, quitado.x); quitado = null; S.guardar(); } return true; }
+  if (act === 'comp-marcar') { quitado = null; const x = d.compra.find(y => y.id === el.dataset.id); if (x) { x.hecho = !x.hecho; S.guardar(); } return true; }
   if (act === 'comp-pasar') {
     const ids = d.compra.filter(x => x.hecho).map(x => x.id);
     asistente(ids, ids.length, 0); return true;
