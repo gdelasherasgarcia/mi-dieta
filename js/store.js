@@ -57,7 +57,7 @@ export function cargar() {
     PESO_SEMILLA.forEach(r => _datos.salud.peso.push({ id: nuevoId(), ...r }));
     _datos.salud_v1 = true; guardar();
   }
-  _datos.compra ||= []; _datos.comidas ||= {}; _datos.plan ||= {};
+  _datos.compra ||= []; _datos.comidas ||= {}; _datos.plan ||= {}; _datos.botiquin ||= []; _datos.avisos_propios ||= []; _datos.avisos_estado ||= {};
   if (!_datos.compra_v1) { COMPRA_SEMILLA.forEach(x => _datos.compra.push({ id: nuevoId(), hecho: false, ...x })); _datos.compra_v1 = true; guardar(); }
   _datos.citas ||= [];
   if (!_datos.citas_v1) { _datos.citas.push({ id: nuevoId(), fecha: '2026-11-24', hora: '', con: 'Médico', lugar: '', nota: 'Derivación a cardiología; llevar preguntas del electro y de la analítica', avisos: [1440, 120] }); _datos.citas_v1 = true; guardar(); }
