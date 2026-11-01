@@ -1,6 +1,6 @@
 // Pantalla «Hoy»: medicinas, agua y lo que hay que gastar primero.
 import * as S from '../store.js';
-import { esc, hoy, fechaLarga, diasHasta } from '../util.js';
+import { esc, hoy, fechaLarga, fechaCorta, diasHasta, desdeIso, iso } from '../util.js';
 import { caducidadEfectiva } from '../producto.js';
 import { medicinasDeHoy, sumaHoras, esPeriodica, tomasDe, ahoraHM } from '../medicinas.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
@@ -44,15 +44,20 @@ export function abrirToma(m) {
   const prevista = ciclo && tomas.length ? sumaHoras(tomas[tomas.length - 1].h || m.hora, m.cada_h).hm : m.hora;
   const max = Number(m.max_dia) || 0, lleno = ciclo && max > 0 && tomas.length >= max;
   const cambiar = !ciclo && tomas.length > 0;
+  const ayer = iso(new Date(desdeIso(hoy()).getTime() - 86400000)), madrugada = m.hora === '23:59' && ahora < '05:00';   // la de acostarse, tomada pasada la medianoche, es la de ayer
   abrirHoja(`
     <h1>${esc(m.nombre)}${m.dosis ? ' ' + esc(m.dosis) : ''}</h1>
     <p class="sub">${ciclo ? `Cada ${esc(m.cada_h)} h` : 'Toca ' + esc(hbonita(m.hora))}${m.nota ? ' · ' + esc(m.nota) : ''}</p>
     ${lleno ? `<p><span class="chip bad">Hoy ya llevas el máximo (${max}). Compruébalo antes de otra toma.</span></p>` : ''}
     <button class="btn main grande" type="submit" value="ahora">${cambiar ? 'Cambiar a ahora' : 'Tomada ahora'} (${ahora})</button>
     <button class="btn grande" style="margin-top:10px" type="submit" value="prevista">${cambiar ? 'Cambiar a su hora' : 'Tomada a su hora'} (${esc(hbonita(prevista))})</button>
+    ${madrugada ? `<button class="btn grande" style="margin-top:10px" type="submit" value="ayer">Era la de ayer, al acostarse (${esc(fechaCorta(ayer))})</button>` : ''}
     <div style="height:14px"></div>
     ${campo('Otra hora', `<input name="hora" type="time" value="${ahora}">`)}
     <button class="btn grande" type="submit" value="otra">Guardar esa hora</button>
+    <h2>¿Se te olvidó apuntarla otro día?</h2>
+    ${campo('Día', `<input name="fecha" type="date" max="${hoy()}" value="${ayer}">`)}
+    <button class="btn grande" type="submit" value="otrodia">Apuntarla en ese día (a la hora «Otra hora»)</button>
     ${tomas.length ? `<h2>Tomas de hoy</h2>` + tomas.map((t, i) => `<div class="fila sep" style="margin-bottom:8px"><span>✓ ${esc(t.h || 'sin hora')}</span>
       <button class="btn mini peligro" type="submit" value="quitar:${i}">Quitar</button></div>`).join('') : ''}
   `, (f, accion) => {
@@ -64,6 +69,14 @@ export function abrirToma(m) {
     if (accion === 'ahora') return poner(ahoraHM());
     if (accion === 'prevista') return poner(prevista);
     if (accion === 'otra') return poner(f.hora);
+    if (accion === 'ayer' || accion === 'otrodia') {                       // apuntar la toma en OTRO día (cuenta para el stock de pastillas de ese día)
+      const dia = accion === 'ayer' ? ayer : f.fecha, h = accion === 'ayer' ? '23:59' : f.hora;
+      if (!dia || dia > hoy()) { avisar('Elige un día que no sea futuro.'); return false; }
+      if (!h) { avisar('Falta la hora.'); return false; }
+      const rd = S.dia(dia), prev = tomasDe(rd, m.id);
+      rd.meds[m.id] = (ciclo ? [...prev, { h }] : [{ h }]).sort((x, y) => (x.h || '').localeCompare(y.h || ''));
+      S.guardar(); avisar(`Toma apuntada el ${fechaCorta(dia)}.`); return true;
+    }
     if (accion.startsWith('quitar:')) {
       tomas.splice(Number(accion.slice(7)), 1);
       if (tomas.length) r.meds[m.id] = tomas; else delete r.meds[m.id];
