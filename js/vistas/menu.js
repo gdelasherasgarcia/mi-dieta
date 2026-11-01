@@ -3,7 +3,7 @@
 import * as S from '../store.js';
 import { esc, hoy, desdeIso, iso, diaSemana, fechaCorta } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
-import { proponer, faltantes, nutriReceta } from '../generador.js';
+import { proponer, faltantes } from '../generador.js';
 
 const DIAS = 6;
 const sumaDias = (f, n) => iso(new Date(desdeIso(f).getTime() + n * 86400000));
@@ -152,10 +152,10 @@ export function acciones(act, el) {
   }
   if (act === 'menu-lista') {
     const dias = Array.from({ length: DIAS }, (_, i) => sumaDias(hoy(), i)), fal = faltantes(dias);
-    abrirHoja(`<h1>Lista de la compra del menú</h1>${fal.length ? `<p class="sub">Esto falta en casa para los platos propuestos:</p><ul style="padding-left:20px">${fal.map(x => `<li>${esc(x.nombre)} · unos ${Math.round(x.g / 10) * 10} g <span class="det">(${esc(x.dias.map(f => diaSemana(f)).join(', '))})</span></li>`).join('')}</ul>
-      <div class="fila"><button class="btn main grow" type="submit" value="anadir">Añadir a la lista de la compra</button><button class="btn grow" type="submit" value="no">Cerrar</button></div>` : '<div class="card vacio">No falta nada para lo que hay en el menú. O todavía no has propuesto ningún plato.</div>'}`, (g, acc) => {
+    abrirHoja(`<h1>Lista de la compra del menú</h1>${fal.length ? `<p class="sub">Esto falta en casa para los platos propuestos. Desmarca lo que no quieras comprar:</p>${fal.map((x, i) => `<label class="fila" style="min-height:44px;align-items:flex-start"><input type="checkbox" name="i${i}" value="1" checked> <span>${esc(x.nombre)} · unos ${Math.round(x.g / 10) * 10} g <span class="det">(${esc(x.dias.map(f => diaSemana(f)).join(', '))})</span></span></label>`).join('')}
+      <div class="fila"><button class="btn main grow" type="submit" value="anadir">Añadir lo marcado a la lista</button><button class="btn grow" type="submit" value="no">Cerrar</button></div>` : '<div class="card vacio">No falta nada para lo que hay en el menú. O todavía no has propuesto ningún plato.</div>'}`, (g, acc) => {
       if (acc !== 'anadir') return true;
-      let n = 0; for (const x of fal) { if (d.compra.some(c => norm(c.nombre) === norm(x.nombre))) continue; d.compra.push({ id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36), nombre: x.nombre, cantidad: Math.max(50, Math.round(x.g / 50) * 50), unidad: 'g', nota: 'Menú: ' + x.dias.map(f => diaSemana(f)).join(', '), hecho: false }); n++; }
+      let n = 0; for (const [i, x] of fal.entries()) { if (g['i' + i] !== '1') continue; if (d.compra.some(c => norm(c.nombre) === norm(x.nombre))) continue; d.compra.push({ id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36), nombre: x.nombre, cantidad: Math.max(50, Math.round(x.g / 50) * 50), unidad: 'g', nota: 'Menú: ' + x.dias.map(f => diaSemana(f)).join(', '), hecho: false }); n++; }
       S.guardar(); avisar(`${n} productos añadidos a la lista de la compra.`); return true;
     });
     return true;
