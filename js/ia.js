@@ -16,6 +16,9 @@ export const AVISO_DATOS = 'Al usar una IA, lo que le envías (tus medicinas, co
 
 export function config() { try { return JSON.parse(localStorage.getItem(CLAVE) || 'null'); } catch (e) { return null; } }
 export function guardarConfig(c) { try { if (c) localStorage.setItem(CLAVE, JSON.stringify(c)); else localStorage.removeItem(CLAVE); } catch (e) {} }
+// Un «http://» no vale desde el móvil (bloquea lo no cifrado y lo cuenta como «sin conexión»): se pasa a https salvo en direcciones locales.
+export const urlSegura = u => String(u || '').trim().replace(/^http:\/\/(?!localhost|127\.|192\.168\.|10\.)/i, 'https://').replace(/\/+$/, '');
+export const claveRara = k => /[^\x21-\x7E]/.test(String(k || '').trim());
 export const valida = c => !!(c && c.clave && (c.proveedor !== 'openai' || (c.url && c.modelo)));
 export const configurada = () => valida(config());
 export const presetDe = c => (c && (c.preset || (c.proveedor === 'openai' ? 'otra' : 'gemini'))) || 'gemini';
@@ -23,7 +26,7 @@ export const etiqueta = c => !c ? 'La IA' : (c.etiqueta || (PRESETS[presetDe(c)]
 // Construye la configuración de una IA a partir de lo escrito en el formulario (vacío = se usan la dirección y el modelo habituales).
 export function desdeFormulario(preset, clave, modelo, url) {
   const p = PRESETS[preset] || PRESETS.gemini;
-  return { preset, proveedor: p.proveedor, clave: (clave || '').trim(), modelo: (modelo || '').trim() || p.modelo || '', url: (url || '').trim() || p.url || '', etiqueta: p.nombre };
+  return { preset, proveedor: p.proveedor, clave: (clave || '').trim(), modelo: (modelo || '').trim() || p.modelo || '', url: urlSegura(url) || p.url || '', etiqueta: p.nombre };
 }
 
 let _usada = null;                                              // qué IA contestó la última vez (la principal o la de respaldo)
@@ -48,7 +51,7 @@ async function unaVez(c, prompt, json) {
   try {
     let r, j;
     if (c.proveedor === 'openai') {
-      r = await fetch(c.url.replace(/\/+$/, '') + '/chat/completions', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.clave },
+      r = await fetch(urlSegura(c.url) + '/chat/completions', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.clave },
         body: JSON.stringify({ model: c.modelo, messages: [{ role: 'user', content: prompt }], ...(json ? { response_format: { type: 'json_object' } } : {}) }) });
       if (!r.ok) throw errorHttp(r.status, await r.text().catch(() => ''));
       j = await r.json(); const t1 = String(j.choices?.[0]?.message?.content || '').trim();
@@ -79,7 +82,7 @@ async function descubrirModeloGemini(c) {
 }
 // Igual para las IA compatibles con OpenAI (Groq, Mistral…): se pide su lista de modelos y se toma uno de chat (grande primero).
 async function descubrirModeloOpenAI(c) {
-  const r = await fetch(c.url.replace(/\/+$/, '') + '/models', { headers: { authorization: 'Bearer ' + c.clave } }); if (!r.ok) return null;
+  const r = await fetch(urlSegura(c.url) + '/models', { headers: { authorization: 'Bearer ' + c.clave } }); if (!r.ok) return null;
   const j = await r.json(), lista = (j.data || j.models || []).map(m => String(m.id || m.name || '')).filter(n => n && !/whisper|orpheus|guard|safeguard|embed|tts|allam|image|moderation|rerank/i.test(n));
   const tam = n => Number((n.match(/(\d+)b/i) || [])[1]) || 0;
   return lista.sort((a, b) => tam(b) - tam(a))[0] || null;

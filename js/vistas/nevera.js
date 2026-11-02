@@ -1,7 +1,7 @@
 // Pantalla «Almacén de comida»: lo que hay en casa, con caducidades. Ordena por lo que antes hay que gastar.
 import * as S from '../store.js';
 import { esc, diasHasta, fechaCorta, nuevoId, hoy } from '../util.js';
-import { abrirHoja, campo, avisar, botonFoto } from '../ui.js';
+import { abrirHoja, campo, avisar, botonFoto, ofrecerDeshacer } from '../ui.js';
 import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
 import * as IA from '../ia.js';
 
@@ -98,7 +98,7 @@ function etiquetaCaducidad(p) {
 }
 
 function detalle(p) {
-  const partes = [`${fmt(p.cantidad)} ${p.unidad}`, p.ubicacion];
+  const partes = [p.sin_cuenta ? 'hay (sin cuenta)' : `${fmt(p.cantidad)} ${p.unidad}`, p.ubicacion];
   if (p.marca) partes.push(p.marca);
   if (p.envase) partes.push(`${fmt(p.envase)} g${p.escurrido ? ' escurrido' : ''}`);
   if (p.sal100 !== null && p.sal100 !== undefined && p.sal100 !== '') partes.push(`sal ${fmt(p.sal100)} g/100 g`);
@@ -118,7 +118,7 @@ export function render() {
   const tarjetas = lista.map(p => {
     const c = etiquetaCaducidad(p), n = diasHasta(caducidadEfectiva(p));
     const cls = n !== null && p.ubicacion !== 'congelador' ? (n < 0 ? 'caducado' : n <= 3 ? 'alerta' : '') : '';
-    const menos = CONTABLES.has(p.unidad) ? `<button type="button" class="btn mini" data-act="menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : '';
+    const menos = p.sin_cuenta ? `<button type="button" class="btn mini" data-act="sc-comprar" data-id="${p.id}" aria-label="Añadir ${esc(p.nombre)} a la lista de la compra">Comprar</button><button type="button" class="btn mini" data-act="sc-baja" data-id="${p.id}" aria-label="Se acabó ${esc(p.nombre)}">Se acabó</button>` : CONTABLES.has(p.unidad) ? `<button type="button" class="btn mini" data-act="menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : '';
     return `<div class="item ${cls}">
       <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="editar" data-id="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
@@ -152,6 +152,7 @@ function formulario(p) {
       ${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${v(p.cantidad)}">`)}
       ${campo('Unidad', `<select name="unidad">${opts(UNID, p.unidad)}</select>`)}
     </div>
+    <label class="fila" style="min-height:44px;margin-bottom:8px"><input type="checkbox" name="sin_cuenta" value="1" ${p.sin_cuenta ? 'checked' : ''} style="width:24px;height:24px"> <span>No llevo la cuenta (p. ej. la fruta): la doy de baja yo cuando se acabe</span></label>
     ${campo('Dónde está', `<select name="ubicacion">${opts(UBIC, p.ubicacion)}</select>`)}
     ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date" value="${v(p.caducidad)}">`)}
     <details ${masDatos ? 'open' : ''} style="margin-bottom:12px">
@@ -252,6 +253,15 @@ export function acciones(act, el) {
     });
     return true;
   }
+  if (act === 'sc-comprar') {
+    const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
+    if ((d.compra ||= []).some(x => nrm(x.nombre) === nrm(p.nombre))) { avisar(`«${p.nombre}» ya está en la lista de la compra.`); return true; }
+    d.compra.push({ id: nuevoId(), nombre: p.nombre, cantidad: null, unidad: '', seccion: 'super', nota: '', hecho: false }); S.guardar(); avisar(`«${p.nombre}» añadido a la lista de la compra.`); return true;
+  }
+  if (act === 'sc-baja') {
+    const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
+    const copia = S.exportar(); d.nevera = d.nevera.filter(x => x !== p); S.guardar(); ofrecerDeshacer(copia); avisar(`«${p.nombre}» dado de baja.`); return true;
+  }
   if (act === 'menos') {
     const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
     p.cantidad = Math.max(0, Number(p.cantidad) - 1);
@@ -273,10 +283,10 @@ export function acciones(act, el) {
         nombre, cantidad: Number(String(f.cantidad).replace(',', '.')) || 0, unidad: f.unidad, ubicacion: f.ubicacion,
         caducidad: f.caducidad || null, nota: (f.nota || '').trim(), marca: (f.marca || '').trim(),
         envase: numOrNull(f.envase), escurrido: f.escurrido === '1', sal100: numOrNull(f.sal100),
-        ean: ean || null, racion: numOrNull(f.racion), abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), v2: true,
+        ean: ean || null, sin_cuenta: f.sin_cuenta === '1', racion: numOrNull(f.racion), abierto: f.abierto || null, dias_abierto: numOrNull(f.dias_abierto), v2: true,
       };
       const cat = S.buscarCatalogo(nombre);                 // si está en el catálogo, completa lo que dejaste vacío
-      if (cat) { if (datos.sal100 === null && cat.sal !== null && cat.sal !== undefined) datos.sal100 = cat.sal; if (!datos.marca && cat.marca) datos.marca = cat.marca; }
+      if (cat) { cat.sin_cuenta = datos.sin_cuenta; if (datos.sal100 === null && cat.sal !== null && cat.sal !== undefined) datos.sal100 = cat.sal; if (!datos.marca && cat.marca) datos.marca = cat.marca; }
       if (p) Object.assign(p, datos); else d.nevera.push(completar({ id: nuevoId(), ...datos }));
       S.guardar(); return true;
     });

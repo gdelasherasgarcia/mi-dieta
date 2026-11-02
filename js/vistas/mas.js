@@ -82,6 +82,7 @@ export function acciones(act, el) {
       <div class="pila"><button class="btn main" type="submit" value="probar">Probar y guardar</button>${IA.configurada() ? '<button class="btn peligro" type="submit" value="desconectar-ia">Desconectar la IA</button>' : ''}</div>
       ${IA.pieIA()}`, (f, acc) => {
       if (acc === 'desconectar-ia') { IA.guardarConfig(null); avisar('IA desconectada.'); S.guardar(); return true; }
+      for (const [k, n] of [['clave', 'de la IA principal'], ['r_clave', 'del respaldo'], ['r2_clave', 'del segundo respaldo']]) if (f[k] && IA.claveRara(f[k])) { avisar('La clave ' + n + ' tiene espacios, saltos de línea o signos raros (¿un «…» al copiar?). Pégala de nuevo.', 8000); return false; }
       const prin = IA.desdeFormulario(f.preset, f.clave, f.modelo, f.url);
       if (!prin.clave) { avisar('Falta la clave de la IA principal.'); return false; }
       if (!IA.valida(prin)) { avisar('Para esa IA hacen falta la dirección y el modelo.'); return false; }

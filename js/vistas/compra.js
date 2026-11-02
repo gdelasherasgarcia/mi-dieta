@@ -38,12 +38,14 @@ export function render() {
     <p class="nota-pie">«Pasar a casa» te va preguntando cantidad, sitio y caducidad de cada producto marcado; solo sale de la lista cuando lo guardas en casa.</p>`;
 }
 
-function aAlmacen({ nombre, cantidad, unidad, ubicacion, caducidad }, cat) {
+function aAlmacen({ nombre, cantidad, unidad, ubicacion, caducidad, sin_cuenta }, cat) {
+  if (cat && sin_cuenta !== undefined) cat.sin_cuenta = !!sin_cuenta;       // el catálogo se acuerda para la próxima vez
+  sin_cuenta = sin_cuenta !== undefined ? !!sin_cuenta : !!cat?.sin_cuenta;
   const d = S.datos();
   const ya = d.nevera.find(p => norm(p.nombre) === norm(nombre) && p.ubicacion === ubicacion && (p.caducidad || null) === (caducidad || null));
   if (ya) ya.cantidad = Number(ya.cantidad) + Number(cantidad);
   else d.nevera.push(completar({ id: nuevoId(), nombre, cantidad: Number(cantidad), unidad, ubicacion, caducidad: caducidad || null, nota: '', marca: cat?.marca || '',
-    envase: null, escurrido: false, sal100: cat && cat.sal != null ? cat.sal : null, abierto: null, dias_abierto: null, ean: cat?.ean || null, v2: true }));
+    envase: null, escurrido: false, sal100: cat && cat.sal != null ? cat.sal : null, abierto: null, dias_abierto: null, ean: cat?.ean || null, sin_cuenta, v2: true }));
   if (cat) cat.en_tienda = 'si';
   const k = d.compra.findIndex(x => norm(x.nombre) === norm(nombre));      // si estaba en la lista, se tacha sola
   if (k >= 0) d.compra.splice(k, 1);
@@ -54,10 +56,11 @@ function hojaAlmacen(cat) {                                                  // 
     <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="1">`)}${campo('Unidad', `<select name="unidad">${opts(UNID, 'ud')}</select>`)}</div>
     ${campo('Dónde lo guardas', `<select name="ubicacion">${opts(UBIC, ubicDe(cat))}</select>`)}
     ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date">`)}
+    <label class="fila" style="min-height:44px;margin-bottom:8px"><input type="checkbox" name="sin_cuenta" value="1" ${cat?.sin_cuenta ? 'checked' : ''} style="width:24px;height:24px"> <span>No llevo la cuenta (fruta, pan, leche…): la doy de baja yo</span></label>
     <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar en casa</button></div>`, f => {
     const cantidad = Number(String(f.cantidad).replace(',', '.'));
     if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
-    aAlmacen({ nombre: cat.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad }, cat);
+    aAlmacen({ nombre: cat.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad, sin_cuenta: f.sin_cuenta === '1' }, cat);
     S.guardar(); avisar(`«${cat.nombre.slice(0, 40)}» ya está en casa.`); return true;
   });
 }
@@ -129,6 +132,7 @@ function asistente(ids, total, hechos) {
     <div class="dos">${campo('Cantidad', `<input name="cantidad" type="number" inputmode="decimal" min="0" step="any" value="${esc(x.cantidad || 1)}">`)}${campo('Unidad', `<select name="unidad">${opts(UNID, x.unidad || 'ud')}</select>`)}</div>
     ${campo('Dónde lo guardas', `<select name="ubicacion">${opts(UBIC, ubicDe(cat))}</select>`)}
     ${campo('Caduca (fecha del envase)', `<input name="caducidad" type="date">`)}
+    <label class="fila" style="min-height:44px;margin-bottom:8px"><input type="checkbox" name="sin_cuenta" value="1" ${cat?.sin_cuenta ? 'checked' : ''} style="width:24px;height:24px"> <span>No llevo la cuenta (fruta, pan, leche…): la doy de baja yo</span></label>
     <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar en casa</button></div>
     <div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="nolo">No lo traje</button><button class="btn grow" type="submit" value="saltar">Luego</button></div>
     <p class="nota-pie">«No lo traje» lo deja en la lista sin marcar. «Luego» lo deja marcado para otro momento.</p>`, (f, acc) => {
@@ -136,7 +140,7 @@ function asistente(ids, total, hechos) {
     if (acc === 'guardar') {
       const cantidad = Number(String(f.cantidad).replace(',', '.'));
       if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
-      aAlmacen({ nombre: x.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad }, cat); S.guardar(); h++;
+      aAlmacen({ nombre: x.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad, sin_cuenta: f.sin_cuenta === '1' }, cat); S.guardar(); h++;
     } else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
     setTimeout(() => asistente(ids, total, h), 0);                       // la hoja se cierra al volver; la siguiente se abre después
     return true;

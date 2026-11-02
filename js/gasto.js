@@ -13,7 +13,7 @@ export const fraccion = n => { const x = Number(n); if (Math.abs(x - 0.5) < 0.01
 
 export function candidatos(texto) {
   const t = new Set(toks(texto));
-  return S.datos().nevera.filter(p => p.ubicacion !== 'congelador' && toks(p.nombre).some(x => t.has(x)));
+  return S.datos().nevera.filter(p => !p.sin_cuenta && p.ubicacion !== 'congelador' && toks(p.nombre).some(x => t.has(x)));
 }
 
 const UNIDADES = new Set(['ud', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa']);
@@ -25,9 +25,9 @@ const fila = (p, pref) => `<div class="card" style="margin-bottom:8px"><div clas
 // Pregunta qué se gastó del almacén al comer `texto`. Si no hay nada que encaje, no molesta (solo ofrece elegir uno).
 // Con `ids` (los productos que se habían previsto en el menú) salen ya elegidos; sin ellos se buscan por el nombre de lo comido.
 export function abrirGasto(texto, ids = null) {
-  const d = S.datos(), previstos = ids ? ids.map(i => d.nevera.find(p => p.id === i)).filter(Boolean) : null;
+  const d = S.datos(), previstos = ids ? ids.map(i => d.nevera.find(p => p.id === i)).filter(p => p && !p.sin_cuenta) : null;
   const cands = previstos || candidatos(texto).slice(0, 5);
-  const otros = d.nevera.filter(p => p.ubicacion !== 'congelador' && !cands.includes(p)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const otros = d.nevera.filter(p => !p.sin_cuenta && p.ubicacion !== 'congelador' && !cands.includes(p)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   abrirHoja(`<h1>${previstos ? '¿Descontamos lo previsto?' : '¿Qué has gastado de casa?'}</h1><p class="sub">${esc(texto)}</p>${previstos ? '<p class="det">Esto es lo que tenías previsto usar del almacén. Confirma o ajusta las cantidades.</p>' : ''}
     ${cands.map(p => fila(p, previstos ? defecto(p) : '0')).join('') || '<div class="card vacio" style="margin:0 0 8px">No veo nada del almacén en lo que comiste.</div>'}
     <label class="campo"><span>Otro producto de casa (opcional)</span><select name="otro"><option value="">— ninguno —</option>${otros.map(p => `<option value="${esc(p.id)}">${esc(p.nombre.slice(0, 50))} (${esc(p.cantidad)} ${esc(p.unidad)})</option>`).join('')}</select></label>

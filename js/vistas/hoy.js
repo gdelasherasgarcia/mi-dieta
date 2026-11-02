@@ -160,7 +160,7 @@ export function render() {
       const n = diasHasta(caducidadEfectiva(p)), par = parcial(p);
       const etiqueta = n === null ? '' : n < 0 ? `Caducado hace ${-n} d` : n === 0 ? 'Caduca hoy' : `Caduca en ${n} d`;
       return `<div class="item ${n !== null && n < 0 ? 'caducado' : 'alerta'}"><div class="grow"><div class="nom">${esc(p.nombre)}</div>
-        <div class="det">${par ? `queda ${esc(fraccion(Number(p.cantidad)))}` : esc(p.cantidad)} ${par ? '' : esc(p.unidad)} · ${esc(p.ubicacion)}${par && p.abierto ? ' · abierto' : ''}</div></div>
+        <div class="det">${p.sin_cuenta ? 'hay' : par ? `queda ${esc(fraccion(Number(p.cantidad)))}` : esc(p.cantidad)} ${par || p.sin_cuenta ? '' : esc(p.unidad)} · ${esc(p.ubicacion)}${par && p.abierto ? ' · abierto' : ''}</div></div>
         <span class="chip ${n !== null && n < 0 ? 'bad' : 'warn'}">${etiqueta || (par ? 'abierto' : '')}</span></div>`;
     }).join('') : '<div class="card vacio" style="margin:0">Nada a punto de caducar.</div>'}
     ${(() => { const bot = otro ? [] : botiquinPendiente(d); return bot.length ? `<h2>Botiquín</h2>${bot.map(({ p, n }) => `<div class="item ${n < 0 ? 'caducado' : 'alerta'}"><div class="grow"><div class="nom">${esc(p.nombre)}</div><div class="det">${n < 0 ? 'Caducado: retirar' : n === 0 ? 'Caduca hoy' : 'Caduca en ' + n + ' d'}</div></div><span class="chip ${n < 0 ? 'bad' : 'warn'}">${n < 0 ? 'retirar' : n + ' d'}</span></div>`).join('')}<button type="button" class="btn grande" data-nav="nevera" onclick="try{sessionStorage.setItem('ir_botiquin','1')}catch(e){}">Abrir el botiquín</button>` : ''; })()}
