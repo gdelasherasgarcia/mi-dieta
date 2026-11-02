@@ -3,6 +3,7 @@ import * as S from '../store.js';
 import { esc, diasHasta, fechaCorta, nuevoId, hoy } from '../util.js';
 import { abrirHoja, campo, avisar, botonFoto } from '../ui.js';
 import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
+import * as IA from '../ia.js';
 
 const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', 'Despensa']];
 const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa'];
@@ -75,8 +76,8 @@ function formularioBot(p) {
       </div>
     </details>
     <label class="campo"><span>Para qué sirve (ficha)</span><textarea name="para" rows="3" autocomplete="off" placeholder="p. ej. antiinflamatorio; 1 comprimido cada 8 h con comida…" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px">${v(p.para)}</textarea></label>
-    <button type="button" class="btn grande" data-act="bot-ia" style="margin:-4px 0 12px">🤖 Preguntar a una IA (copia la pregunta)</button>
-    <p class="det" style="margin:-6px 0 10px">Pega la pregunta en tu IA y copia aquí su respuesta. Es orientativo: manda el prospecto y lo que te diga el médico o la farmacia.</p>
+    <button type="button" class="btn grande" data-act="bot-ia" style="margin:-4px 0 12px">🤖 ${IA.configurada() ? 'Rellenar con la IA' : 'Preguntar a una IA (copia la pregunta)'}</button>
+    ${IA.configurada() ? IA.pieIA() : '<p class="det" style="margin:-6px 0 10px">Pega la pregunta en tu IA y copia aquí su respuesta. Es orientativo: manda el prospecto y lo que te diga el médico o la farmacia.</p>'}
     ${campo('Nota', `<input name="nota" value="${v(p.nota)}" autocomplete="off">`)}
     <div class="fila" style="margin-top:6px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
     ${nuevo ? '' : '<div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="baja-cad">Dar de baja: caducado</button><button class="btn grow" type="submit" value="baja-gast">Gastado</button></div><button class="btn peligro grande" style="margin-top:10px" type="submit" value="borrar">Borrar</button>'}`;
@@ -215,6 +216,13 @@ export function acciones(act, el) {
     const f = el.closest('form'), nombre = ((f && f.querySelector('[name="nombre"]')) || {}).value?.trim();
     if (!nombre) { avisar('Escribe primero el nombre del medicamento.'); return false; }
     const q = `Explícame en español, en 3 líneas como máximo y con palabras sencillas, para qué sirve el medicamento «${nombre}» y sus precauciones básicas. Responde solo con ese texto; no sustituye al prospecto ni al médico.`;
+    if (IA.configurada()) {                                                      // IA conectada: contesta ella y la respuesta va a la ficha, para revisarla
+      const campoPara = f && f.querySelector('[name="para"]'), textoBoton = el.textContent; el.textContent = '⏳ Preguntando a ' + IA.nombreIA() + '…'; el.disabled = true; avisar('Preguntando a ' + IA.nombreIA() + '… puede tardar unos segundos.', 70000);
+      const listo = () => { if (document.body.contains(el)) { el.textContent = textoBoton; el.disabled = false; } };
+      IA.preguntar(q).then(t => { listo(); if (campoPara && document.body.contains(campoPara)) { campoPara.value = t; campoPara.scrollIntoView({ block: 'center', behavior: 'smooth' }); campoPara.style.borderColor = 'var(--ok)'; avisar(IA.nombreIA() + ' es una IA y puede cometer errores: revisa lo que ha escrito.', 6000); } else avisar('La ventana se cerró antes de recibir la respuesta.'); })
+        .catch(e => { listo(); avisar(e.message, 7000); });
+      return false;
+    }
     (navigator.clipboard?.writeText(q) || Promise.reject()).then(() => avisar('Pregunta copiada: pégala en tu IA y trae aquí la respuesta.')).catch(() => { if (f) f.querySelector('[name="para"]').value = ''; avisar('No pude copiar. Pregunta: para qué sirve «' + nombre + '».'); });
     return false;
   }

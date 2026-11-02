@@ -1,7 +1,8 @@
 // Pantalla «Más»: aspecto y copia de seguridad.
 import * as S from '../store.js';
 import { esc, hoy } from '../util.js';
-import { avisar, confirmar } from '../ui.js';
+import { avisar, confirmar, abrirHoja, campo } from '../ui.js';
+import * as IA from '../ia.js';
 
 import { abrirAjustesAgua } from './hoy.js';
 
@@ -24,6 +25,12 @@ export function render() {
     <p class="sub">Aspecto, manual y copia de seguridad.</p>
     ${grupo('Tamaño de letra', 'fuente', [['normal', 'Normal'], ['grande', 'Grande'], ['enorme', 'Enorme']], a.fuente)}
     ${grupo('Tema', 'tema', [['auto', 'Automático'], ['claro', 'Claro'], ['oscuro', 'Oscuro']], a.tema)}
+
+    <h2>Inteligencia artificial</h2>
+    <div class="card">
+      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.config().proveedor === 'openai' ? (IA.config().modelo || 'otra IA') : 'Gemini')}</b>. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
+      <button type="button" class="btn grande" data-act="ia-conectar">🤖 ${IA.configurada() ? 'Cambiar o desconectar la IA' : 'Conectar una IA'}</button>
+    </div>
 
     <h2>Ayuda</h2>
     <div class="card"><button type="button" class="btn main grande" data-ayuda="manual">📖 Manual completo de la app</button>
@@ -48,6 +55,29 @@ export function render() {
 
 export function acciones(act, el) {
   const d = S.datos();
+  if (act === 'ia-conectar') {
+    const c = IA.config() || { proveedor: 'gemini', clave: '', modelo: '', url: '' };
+    abrirHoja(`<h1>Conectar una IA</h1>
+      <p class="det" style="white-space:pre-line">⚠ ${esc(IA.AVISO_DATOS)}</p>
+      <label class="campo"><span>¿Qué IA?</span><select name="proveedor">${Object.entries(IA.PROVEEDORES).map(([k, v]) => `<option value="${k}" ${c.proveedor === k ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('')}</select></label>
+      <p class="det" style="margin:-4px 0 10px">Gemini: clave gratuita en aistudio.google.com/apikey (con tu cuenta de Google). Otra IA: pon también su dirección y el modelo. Los límites y las condiciones gratuitas los fija cada proveedor y pueden cambiar.</p>
+      ${campo('Clave de la IA (API key)', `<input name="clave" type="password" value="${esc(c.clave)}" autocomplete="off" placeholder="la que te da el proveedor">`)}
+      ${campo('Modelo (déjalo vacío con Gemini si no sabes)', `<input name="modelo" value="${esc(c.modelo || '')}" autocomplete="off" placeholder="p. ej. gemini-flash-latest">`)}
+      ${campo('Dirección base (solo «otra IA»)', `<input name="url" value="${esc(c.url || '')}" autocomplete="off" placeholder="https://api.openai.com/v1">`)}
+      <p class="det">La clave se guarda solo en este móvil, aparte de tus datos: no va en las copias de seguridad.</p>
+      <div class="pila"><button class="btn main" type="submit" value="probar">Probar y guardar</button>${IA.configurada() ? '<button class="btn peligro" type="submit" value="desconectar-ia">Desconectar la IA</button>' : ''}</div>
+      ${IA.pieIA()}`, (f, acc) => {
+      if (acc === 'desconectar-ia') { IA.guardarConfig(null); avisar('IA desconectada.'); S.guardar(); return true; }
+      const nueva = { proveedor: f.proveedor, clave: (f.clave || '').trim(), modelo: (f.modelo || '').trim() || (f.proveedor === 'gemini' ? IA.PROVEEDORES.gemini.modelo : ''), url: (f.url || '').trim() };
+      if (!nueva.clave) { avisar('Falta la clave.'); return false; }
+      if (nueva.proveedor === 'openai' && (!nueva.url || !nueva.modelo)) { avisar('Para otra IA hacen falta la dirección y el modelo.'); return false; }
+      const antes = IA.config(); IA.guardarConfig(nueva); avisar('Probando la conexión…', 30000);
+      IA.preguntar('Responde solo con la palabra: ok').then(() => { avisar('Conectada y funcionando.'); S.guardar(); })
+        .catch(e => { IA.guardarConfig(antes); avisar('No funciona: ' + e.message, 7000); });
+      return true;
+    });
+    return false;
+  }
   if (act === 'copia-ahora') { S.copiarAhora().then(j => avisar(j.ok ? `Copia hecha (${j.dia} ${j.hora}).` : 'No se pudo: ' + (j.error || 'error'))); return false; }
   if (act === 'agua-ajustes') { abrirAjustesAgua(); return false; }
   if (act === 'aj') {

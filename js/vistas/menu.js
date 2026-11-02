@@ -4,6 +4,7 @@ import * as S from '../store.js';
 import { esc, hoy, desdeIso, iso, diaSemana, fechaCorta } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 import { proponer, faltantes } from '../generador.js';
+import * as IA from '../ia.js';
 
 const DIAS = 6;
 const sumaDias = (f, n) => iso(new Date(desdeIso(f).getTime() + n * 86400000));
@@ -45,6 +46,7 @@ export function render() {
     <h2>Con una IA</h2>
     <div class="card">
       <p style="margin-top:0">La IA no ve la app: le das un texto que la pone al día de lo que tienes y lo que buscas, y luego pegas aquí lo que conteste. Antes de aplicar nada, lo reviso con las reglas de tu dieta.</p>
+      ${IA.configurada() ? `<button type="button" class="btn main grande" data-act="menu-ia">⚡ Proponer el menú con ${esc(IA.nombreIA())}</button>${IA.pieIA()}<p class="det" style="margin:12px 0 4px">O, a mano:</p>` : ''}
       <button type="button" class="btn grande" data-act="menu-prompt">1 · Copiar el texto para la IA</button>
       <button type="button" class="btn grande" style="margin-top:10px" data-act="menu-pegar">2 · Pegar la respuesta de la IA</button>
     </div>
@@ -96,6 +98,12 @@ export function acciones(act, el) {
     abrirHoja(`<h1>Texto para la IA</h1><p class="sub">Cópialo entero (mantén pulsado → seleccionar todo → copiar) y pégalo en la IA.</p>
       <textarea readonly rows="16" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.75rem">${esc(promptIA())}</textarea>`, () => true);
     return true;
+  }
+  if (act === 'menu-ia') {
+    avisar('Pidiendo el menú a ' + IA.nombreIA() + '… puede tardar unos segundos.', 70000);
+    IA.preguntar(promptIA(), { json: true }).then(t => { const r = parsear(t); if (!Array.isArray(r.menu) || !r.menu.length) throw new Error('La respuesta no trae «menu».'); revisar(r); })
+      .catch(e => avisar('No se pudo: ' + e.message, 7000));
+    return false;
   }
   if (act === 'menu-pegar') {
     abrirHoja(`<h1>Respuesta de la IA</h1><p class="sub">Pega aquí el JSON que te dé. Lo reviso antes de aplicar nada.</p>
@@ -196,7 +204,7 @@ function revisar(r) {
       if (!bloqueo) aplicables.push({ f: dia.fecha, k, texto, ids });
     }
   }
-  abrirHoja(`<h1>Revisión</h1><p class="sub">${esc(r.notas || '')}</p>${filas.join('') || '<div class="card vacio">No hay nada que aplicar.</div>'}
+  abrirHoja(`<h1>Revisión</h1><p class="sub">${esc(r.notas || '')}</p>${IA.configurada() ? IA.pieIA() : ''}${filas.join('') || '<div class="card vacio">No hay nada que aplicar.</div>'}
     <p class="det">Se pueden aplicar ${aplicables.length} platos. Los marcados en rojo no se aplican (no encajan con tus reglas). No pisa los que ya marcaste «fuera».</p>
     <div class="fila"><button class="btn main grow" type="submit" value="aplicar" ${aplicables.length ? '' : 'disabled'}>Aplicar ${aplicables.length}</button><button class="btn grow" type="submit" value="no">No aplicar</button></div>`, (g, acc) => {
     if (acc !== 'aplicar') return true;

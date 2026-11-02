@@ -28,9 +28,9 @@ export function abrirHoja(html, alEnviar) {
 }
 export function cerrarHoja() { const h = hoja(); h.hidden = true; h.innerHTML = ''; }
 
-export function avisar(texto) {
+export function avisar(texto, ms = 2600) {                   // ms más largo para mensajes de espera (p. ej. mientras contesta la IA)
   const a = aviso(); a.textContent = texto; a.hidden = false;
-  clearTimeout(temporizador); temporizador = setTimeout(() => { a.hidden = true; }, 2600);
+  clearTimeout(temporizador); temporizador = setTimeout(() => { a.hidden = true; }, ms);
 }
 
 // Tras borrar o dar de baja algo: el aviso de abajo lleva un botón «Deshacer» que restaura todo como estaba (unos segundos).
