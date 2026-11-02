@@ -6,8 +6,8 @@ import { esc } from './util.js';
 const CLAVE = 'dieta_ia_v1';
 // preset → cómo se habla con ella. El modelo y la dirección «habituales» se usan si el usuario los deja vacíos (los modelos cambian con el tiempo).
 export const PRESETS = {
-  gemini: { nombre: 'Gemini (Google)', proveedor: 'gemini', modelo: 'gemini-flash-latest', ayuda: 'Clave gratuita en aistudio.google.com/apikey, con tu cuenta de Google.' },
-  groq: { nombre: 'Groq', proveedor: 'openai', url: 'https://api.groq.com/openai/v1', modelo: 'llama-3.3-70b-versatile', ayuda: 'Clave gratuita en console.groq.com.' },
+  gemini: { nombre: 'Gemini (Google)', proveedor: 'gemini', modelo: 'gemini-3.5-flash-lite', ayuda: 'Clave gratuita en aistudio.google.com/apikey, con tu cuenta de Google.' },
+  groq: { nombre: 'Groq', proveedor: 'openai', url: 'https://api.groq.com/openai/v1', modelo: 'openai/gpt-oss-120b', ayuda: 'Clave gratuita en console.groq.com.' },
   mistral: { nombre: 'Mistral', proveedor: 'openai', url: 'https://api.mistral.ai/v1', modelo: 'mistral-small-latest', ayuda: 'Clave en console.mistral.ai (plan gratuito de pruebas).' },
   openrouter: { nombre: 'OpenRouter', proveedor: 'openai', url: 'https://openrouter.ai/api/v1', modelo: '', ayuda: 'Clave en openrouter.ai; el modelo gratuito acaba en «:free» (míralo en su web).' },
   otra: { nombre: 'Otra (compatible con OpenAI)', proveedor: 'openai', url: '', modelo: '', ayuda: 'Pon la dirección base de su API, el modelo y tu clave.' },
@@ -40,7 +40,7 @@ function mensajeError(status, texto) {
   return 'La IA ha respondido con un error' + (status ? ' (' + status + ')' : '') + (texto ? ': ' + String(texto).slice(0, 120) : '') + '.';
 }
 // «recuperable»: otra IA (la de respaldo) puede salvar la situación. «servidor»: merece un reintento con la misma.
-const errorHttp = (status, texto) => { const e = new Error(mensajeError(status, texto)); e.servidor = status >= 500; e.recuperable = status === 429 || status >= 500; return e; };
+const errorHttp = (status, texto) => { const e = new Error(mensajeError(status, texto)); e.status = status; e.servidor = status >= 500; e.recuperable = status === 429 || status >= 500; return e; };
 const dormir = ms => new Promise(r => setTimeout(r, ms));
 
 async function unaVez(c, prompt, json) {
@@ -69,11 +69,32 @@ async function unaVez(c, prompt, json) {
     throw e;
   } finally { clearTimeout(t); }
 }
+// Los nombres de modelo de Google cambian y los viejos dejan de existir: si el modelo dado da 404, se busca uno vigente (preferimos «flash-lite», más holgado en la capa gratuita) y se recuerda.
+async function descubrirModeloGemini(c) {
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': c.clave } }); if (!r.ok) return null;
+  const j = await r.json(), ver = n => Number((n.match(/^gemini-([\d.]+)/) || [])[1]) || 0, orden = (a, b) => ver(b) - ver(a);
+  const lista = (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => String(m.name || '').replace(/^models\//, ''))
+    .filter(n => /^gemini-[\d.]+-flash/.test(n) && !/preview|live|tts|image|audio|exp|thinking|8b|latest/.test(n));
+  return lista.filter(n => /lite/.test(n)).sort(orden)[0] || lista.filter(n => !/lite/.test(n)).sort(orden)[0] || null;
+}
+// Igual para las IA compatibles con OpenAI (Groq, Mistral…): se pide su lista de modelos y se toma uno de chat (grande primero).
+async function descubrirModeloOpenAI(c) {
+  const r = await fetch(c.url.replace(/\/+$/, '') + '/models', { headers: { authorization: 'Bearer ' + c.clave } }); if (!r.ok) return null;
+  const j = await r.json(), lista = (j.data || j.models || []).map(m => String(m.id || m.name || '')).filter(n => n && !/whisper|orpheus|guard|safeguard|embed|tts|allam|image|moderation|rerank/i.test(n));
+  const tam = n => Number((n.match(/(\d+)b/i) || [])[1]) || 0;
+  return lista.sort((a, b) => tam(b) - tam(a))[0] || null;
+}
+function recordarModelo(c, m) { const g = config(); if (!g) return; if (g.clave === c.clave) g.modelo = m; else if (g.respaldo && g.respaldo.clave === c.clave) g.respaldo.modelo = m; guardarConfig(g); }
 // Una IA concreta: ante un error del servidor (5xx) reintenta dos veces antes de rendirse.
-export async function preguntarA(c, prompt, { json = false, reintentos = 2 } = {}) {
+export async function preguntarA(c, prompt, { json = false, reintentos = 2, _buscado = false } = {}) {
   for (let intento = 0; ; intento++) {
     try { return await unaVez(c, prompt, json); }
-    catch (e) { if (!e.servidor || intento >= reintentos) throw e; await dormir(intento === 0 ? 2500 : 6000); }
+    catch (e) {
+      if (e.status === 404 && !_buscado) {                        // ese modelo ya no existe: se busca otro y se vuelve a intentar
+        const m = await (c.proveedor === 'gemini' ? descubrirModeloGemini(c) : c.url ? descubrirModeloOpenAI(c) : Promise.resolve(null)).catch(() => null);
+        if (m && m !== c.modelo) { const t = await preguntarA({ ...c, modelo: m }, prompt, { json, reintentos, _buscado: true }); recordarModelo(c, m); return t; }
+      }
+      if (!e.servidor || intento >= reintentos) throw e; await dormir(intento === 0 ? 2500 : 6000); }
   }
 }
 // Pregunta a la IA principal; si falla por algo que otra IA puede salvar, prueba la de respaldo. Con {json:true} pide solo JSON.
@@ -81,8 +102,9 @@ export async function preguntar(prompt, { json = false } = {}) {
   const c = config(); if (!valida(c)) throw new Error('No hay ninguna IA conectada. Conéctala en «Más».');
   try { const t = await preguntarA(c, prompt, { json, reintentos: valida(c.respaldo) ? 0 : 2 }); _usada = c; return t; }          // con respaldo no se pierde tiempo reintentando
   catch (e) {
-    if (!e.recuperable || !valida(c.respaldo)) throw e;
+    if (e.status === 404) e.recuperable = true;                                           // modelo o dirección que no existen: que lo intente la de respaldo
+    if (!e.recuperable || !valida(c.respaldo)) { e.message = `${etiqueta(c)} (modelo «${c.modelo}»): ${e.message}`; throw e; }
     try { const t = await preguntarA(c.respaldo, prompt, { json }); _usada = c.respaldo; return t; }
-    catch (e2) { throw new Error(`${etiqueta(c)}: ${e.message}\n${etiqueta(c.respaldo)} (respaldo): ${e2.message}`); }
+    catch (e2) { throw new Error(`${etiqueta(c)} (modelo «${c.modelo}»): ${e.message}\n${etiqueta(c.respaldo)} (respaldo, modelo «${c.respaldo.modelo}»): ${e2.message}`); }
   }
 }
