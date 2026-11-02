@@ -6,7 +6,7 @@ import { esc, nuevoId } from './util.js';
 import { abrirHoja, avisar } from './ui.js';
 import * as IA from './ia.js';
 import { htmlCriterios, leerCriterios } from './criterios.js';
-import { parsearJSON, rescatarLista } from './json_ia.js';
+import { extraerLista } from './json_ia.js';
 import { GEN } from './nutri_generica.js';
 import { nutriReceta, enRango } from './generador.js';
 import { diasHasta } from './util.js';
@@ -51,6 +51,7 @@ Responde SOLO con un bloque JSON, sin texto antes ni después:
 
 // Comprobación por código de una receta que propone la IA. Devuelve {rec} si vale o {motivo} si no.
 export function validarReceta(x, F, existentes, vigil) {
+  if (x && typeof x === 'object') x = { ...x, nombre: x.nombre || x.name, pasos: x.pasos || x.preparacion || x.steps || x.instrucciones, aparatos: x.aparatos || x.equipment, min: x.min || x.minutos || x.tiempo, ing: (x.ing || x.ingredientes || x.ingredients || []).map?.(i => i && ({ k: i.k || i.clave || i.key || i.ingrediente, g: i.g ?? i.gramos ?? i.cantidad ?? i.grams })) };
   if (!x || typeof x.nombre !== 'string' || x.nombre.trim().length < 3) return { motivo: 'sin nombre' };
   if (!Array.isArray(x.ing) || x.ing.length < 2 || x.ing.length > 10) return { motivo: 'ingredientes mal formados' };
   const perm = permitidas(F), ing = [];
@@ -95,15 +96,16 @@ export function abrirPedirRecetas(alTerminar) {
 
 async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
   const d = S.datos(), F = d.ajustes.ia_form || {}, total = Math.ceil(n / TANDA), vigil = vigiladas(F), rechazos = {};
-  let nuevas = 0, fallos = 0, recibidas = 0;
+  let nuevas = 0, fallos = 0, recibidas = 0, parado = '';
   for (let t = 1; t <= total; t++) {
     avisar(`Recetas recibidas: ${recibidas} de ${n} · faltan ${Math.max(0, n - recibidas)} · válidas ${nuevas}. Pidiendo la tanda ${t} de ${total}…`, 90000);
     let r;
     try {
       const texto = await IA.preguntar(promptRecetas(F, TANDA, t, total, d.recetas.map(x => x.nombre), prefer), { json: true });
-      try { r = parsearJSON(texto); if (!Array.isArray(r.recetas)) throw new Error('La respuesta no trae «recetas».'); }
-      catch (e0) { const lista = rescatarLista(texto, 'recetas'); if (!lista.length) throw e0; r = { recetas: lista }; }       // respuesta rara o cortada: se aprovechan las recetas que llegaron enteras
-    } catch (e) { if (++fallos >= 2) { avisar(`Se paró en la tanda ${t}: ${e.message}. Llevas ${nuevas} recetas nuevas.`, 9000); break; } t--; continue; }
+      const lista = extraerLista(texto, ['recetas', 'recipes', 'recetas_nuevas', 'platos'], x => x && typeof x === 'object' && (x.nombre || x.name) && (x.ing || x.ingredientes || x.ingredients));       // acepta la lista suelta, otra clave, una sola receta o una respuesta cortada
+      if (!lista.length) throw new Error('La respuesta no trae recetas que pueda leer. Empieza así: «' + String(texto).replace(/\s+/g, ' ').slice(0, 160) + '»');
+      r = { recetas: lista };
+    } catch (e) { if (++fallos >= 2) { parado = `Se paró en la tanda ${t}: ${e.message}`; break; } t--; continue; }
     recibidas += r.recetas.length;
     for (const x of r.recetas) { const v = validarReceta(x, F, d.recetas, vigil); if (v.rec) { d.recetas.push(v.rec); nuevas++; } else rechazos[v.motivo] = (rechazos[v.motivo] || 0) + 1; }
     if (nuevas && alTerminar) { alTerminar(); alTerminar = null; }
@@ -111,7 +113,8 @@ async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
   }
   const rech = Object.entries(rechazos).sort((a, b) => b[1] - a[1]), nrech = rech.reduce((s, x) => s + x[1], 0);
   if (alFinal) setTimeout(alFinal, 0);
-  if (nuevas || nrech) avisar(`Pedidas ${n}, recibidas ${recibidas}${recibidas < n ? ` (faltan ${n - recibidas})` : ''}. ${nuevas} recetas válidas, pendientes de revisar.${nrech ? ` El código descartó ${nrech}: ${rech.slice(0, 3).map(x => `${x[0]} (${x[1]})`).join(', ')}.` : ''}`, 12000);
+  if (parado && !nuevas && !nrech) avisar(`${parado}. Llevas 0 recetas nuevas.`, 15000);
+  else if (nuevas || nrech) avisar(`Pedidas ${n}, recibidas ${recibidas}${recibidas < n ? ` (faltan ${n - recibidas})` : ''}. ${nuevas} recetas válidas, pendientes de revisar.${nrech ? ` El código descartó ${nrech}: ${rech.slice(0, 3).map(x => `${x[0]} (${x[1]})`).join(', ')}.` : ''}${parado ? ' ' + parado + '.' : ''}`, 15000);
 }
 
 // Desde «Elegir del recetario»: pide una tanda de recetas pensadas para gastar lo que caduca pronto o está abierto.
