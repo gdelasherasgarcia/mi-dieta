@@ -11,8 +11,6 @@ const sumaDias = (f, n) => iso(new Date(desdeIso(f).getTime() + n * 86400000));
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 const plan = f => ((S.datos().plan ||= {})[f] ||= {});
 const lista = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
-// Palabras que no deben aparecer en un menú propuesto (no por ahora / sal). El enfermero decide cuándo se quitan.
-const NO_POR_AHORA = ['ternera', 'cerdo', 'cordero', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha', 'embutido', 'gamba', 'marisco', 'mejillón', 'mejillon', 'calamar', 'sardina', 'anchoa', 'alcohol', 'vino', 'cerveza', 'chuletón', 'chuleton', 'bacon', 'panceta'];
 
 function franjaTexto(f, k) {
   const aj = S.datos().ajustes, p = plan(f)[k];
@@ -46,33 +44,42 @@ export function render() {
     <h2>Con una IA</h2>
     <div class="card">
       <p style="margin-top:0">La IA no ve la app: le das un texto que la pone al día de lo que tienes y lo que buscas, y luego pegas aquí lo que conteste. Antes de aplicar nada, lo reviso con las reglas de tu dieta.</p>
-      ${IA.configurada() ? `<button type="button" class="btn main grande" data-act="menu-ia">⚡ Proponer el menú con ${esc(IA.nombreIA())}</button>${IA.pieIA()}<p class="det" style="margin:12px 0 4px">O, a mano:</p>` : ''}
+      ${IA.configurada() ? `<button type="button" class="btn main grande" data-act="menu-ia">⚡ Pedir menú a ${esc(IA.nombreIA())} (eliges las opciones)</button>${IA.pieIA()}<p class="det" style="margin:12px 0 4px">O, a mano:</p>` : ''}
       <button type="button" class="btn grande" data-act="menu-prompt">1 · Copiar el texto para la IA</button>
       <button type="button" class="btn grande" style="margin-top:10px" data-act="menu-pegar">2 · Pegar la respuesta de la IA</button>
     </div>
     <p class="nota-pie">Esta app no es un médico. Las reglas de salud son tuyas y de tu enfermero; la IA no las cambia.</p>`;
 }
 
-function promptIA() {
+function promptIA(op = null) {
   const d = S.datos(), aj = d.ajustes, f0 = hoy();
+  op ||= armarOp(aj.ia_form || {}, Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)), '');
   const stock = d.nevera.slice().sort((a, b) => a.ubicacion.localeCompare(b.ubicacion)).map(p => `- ${p.nombre} | ${p.cantidad} ${p.unidad} | ${p.ubicacion}${p.caducidad ? ' | caduca ' + p.caducidad : ''}${p.abierto ? ' | ABIERTO ' + p.abierto + (p.dias_abierto ? ' (consumir en ' + p.dias_abierto + ' d)' : '') : ''}`).join('\n');
   const comido = [];
   for (let i = -6; i <= 0; i++) { const f = sumaDias(f0, i), r = d.comidas?.[f]; if (!r) continue; for (const [k, v] of Object.entries(r)) if (v.estado && v.estado !== 'no') comido.push(`${f} ${k}: ${v.texto}`); }
   const hecho = Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)).map(f => { const c = franjaTexto(f, 'comida'), n = franjaTexto(f, 'cena'); return `${f} (${diaSemana(f)}): comida=${c.txt || '—'}${c.fuera ? ' [FUERA]' : ''}; cena=${n.txt || '—'}${n.fuera ? ' [FUERA]' : ''}`; }).join('\n');
-  const fechas = Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i));
-  return `Eres mi asistente de menús. Hablamos en español, claro y corto. Tu trabajo: proponerme la COMIDA y la CENA de los próximos ${DIAS} días. No eres médico: las reglas de salud son mías y de mi enfermero, tú no las cambias.
+  const fechas = op.dias, F = aj.ia_form || {};
+  const que = op.comidas.length > 1 ? 'la COMIDA y la CENA' : op.comidas[0] === 'comida' ? 'solo la COMIDA (no la cena)' : 'solo la CENA (no la comida)';
+  const rg = (r, u) => { const [a, b] = (r || []).map(Number); return a && b ? `${a}-${b} ${u}` : a ? `al menos ${a} ${u}` : b ? `como máximo ${b} ${u}` : ''; };
+  const plato = [rg(F.kcal_p, 'kcal'), rg(F.prot_p, 'de proteína')].filter(Boolean).join(', '), dia = [rg(F.kcal_d, 'kcal'), rg(F.prot_d, 'de proteína')].filter(Boolean).join(', ');
+  const fijas = [
+    (aj.comida_desayuno || aj.comida_media) && `- ${[aj.comida_desayuno && 'Desayuno fijo: ' + aj.comida_desayuno, aj.comida_media && 'Media mañana: ' + aj.comida_media].filter(Boolean).join('. ')}. (No los toques.)`,
+    aj.comida_cena && `- Cena habitual: ${aj.comida_cena}.${aj.tortilla_rellenos ? ' Rellenos permitidos: ' + aj.tortilla_rellenos + '.' : ''}${aj.tortilla_siempre ? ' Siempre lleva: ' + aj.tortilla_siempre + '.' : ''}${aj.tortilla_estudio ? ' Aún NO: ' + aj.tortilla_estudio + '.' : ''}`,
+    plato && `- Cada plato: ${plato}.`, dia && `- Objetivo del día completo: ${dia}.`,
+    F.reglas && `- Mis reglas propias (respétalas):\n${String(F.reglas).split('\n').map(x => '   · ' + x.trim()).filter(x => x.length > 5).join('\n')}`,
+    `- Hago la compra ${aj.compra_dias === 1 ? 'cada día' : 'cada ' + aj.compra_dias + ' días'}${aj.supermercado ? ', en ' + aj.supermercado : ''}.`,
+  ].filter(Boolean).join('\n');
+  const extra = `PETICIÓN DE ESTA VEZ (junto con mis límites fijos, es todo lo que debes respetar; no añadas restricciones por tu cuenta)
+- Fechas y platos: ${que} de las fechas indicadas abajo. Lo que no te pido, no lo pongas en el JSON.
+${op.salud.length ? `- CONDICIONES DE SALUD que cumples a la vez (si chocan, manda la más estricta):\n${op.salud.map(x => '   · ' + x).join('\n')}\n` : ''}${op.min ? `- Tiempo máximo: ${op.min} minutos de preparación por plato.\n` : ''}${op.aparatos.length ? `- Aparatos que usaré esta vez (solo estos): ${op.aparatos.join(', ')}.\n` : ''}${op.prot.length ? `- Proteínas: solo puedes usar ${op.prot.join(', ')}. NO uses ${op.noProt.join(', ')}.\n` : ''}${op.gustan.length ? `- Me gustan y quiero que salgan si encajan: ${op.gustan.join(', ')}.\n` : ''}${op.excl.length ? `- NO USES NUNCA estos alimentos, ni como acompañamiento: ${op.excl.join(', ')}.\n` : ''}- ${op.caducar ? 'Gasta primero lo que caduca antes.' : 'Lo que caduca no es prioridad esta vez.'}
+- ${op.repetir ? 'Puedes cocinar una vez y repetir el plato en dos días seguidos (lo digo si me conviene).' : 'No repitas platos en estas fechas.'}
+${op.notas ? `- Además: ${op.notas}\n` : ''}
+`;  return `Eres mi asistente de menús. Hablamos en español, claro y corto. Tu trabajo: proponerme ${que} de las fechas que te indico al final. No eres médico: las reglas de salud son mías y de mi profesional sanitario, tú no las cambias.
 
-PRIORIDADES (en este orden): 1) salud (reglas duras de abajo), 2) gastar lo que caduca antes, 3) usar lo que ya tengo, 4) incluir habituales que llevo más tiempo sin comer, 5) solo entonces, cosas por comprar. Si hay fiestas o cenas fuera, ajusta la duración y el reparto, SIN recortar cantidades para compensar ni proponer ayunos.
+PRIORIDADES (en este orden): 1) mis condiciones y límites (los de abajo y los de la petición de esta vez), 2) usar lo que ya tengo, 3) incluir habituales que llevo más tiempo sin comer, 4) solo entonces, cosas por comprar. Si hay fiestas o cenas fuera, ajusta la duración y el reparto, SIN recortar cantidades para compensar ni proponer ayunos.
 
-REGLAS DURAS
-- Sin sal añadida; evita embutidos, adobados salados y procesados. Nada de alcohol.
-- Carnes permitidas hoy: pollo (sin piel), conejo y pavo. Pescado, ternera, cerdo magro, gambas y marisco: NO por ahora (en estudio con el enfermero).
-- Desayuno fijo: ${aj.comida_desayuno}. Media mañana: ${aj.comida_media}. (No los toques.)
-- Cena: ${aj.comida_cena}. Rellenos permitidos: ${aj.tortilla_rellenos}. Siempre lleva: ${aj.tortilla_siempre}. Aún NO: ${aj.tortilla_estudio}. Un solo huevo por la noche.
-- Comida (la parte variable): comida de verdad, 600-800 kcal, 50-60 g de proteína (pollo/conejo/pavo + legumbres + verdura), con aceite de oliva en vaporizador. Patata pequeña al microondas (150-200 g) como guarnición posible.
-- Objetivo del día 1.700-1.900 kcal y 90-100 g de proteína.
-- Soy muy sensible a la comida emocional: prefiero reglas simples y fijas. Los fallos se resuelven volviendo a la siguiente comida, no compensando.
-- Cocino con microondas, horno, sartén, freidora de aire y batidora de mano. Hago la compra a pie, cada ${aj.compra_dias === 1 ? 'día' : aj.compra_dias + ' días'}, en ${aj.supermercado}.
+MIS LÍMITES FIJOS
+${fijas}
 - Lo congelado hay que sacarlo a la nevera el día anterior.
 
 LO QUE TENGO EN CASA AHORA (nombre exacto | cantidad | sitio | caducidad):
@@ -84,10 +91,90 @@ ${comido.join('\n') || '(sin registro todavía)'}
 MENÚ ACTUAL (puede haber cosas fijadas por mí; no las cambies si no te lo pido):
 ${hecho}
 
-AHORA PROPÓN: la comida y la cena de estas fechas: ${fechas.join(', ')}.
+${extra}AHORA PROPÓN: ${que} de estas fechas: ${fechas.join(', ')}.
 Para cada plato di en "usa" los productos de casa que gastas, con el NOMBRE EXACTO de la lista de arriba. Si falta algo, ponlo en "comprar".
 Responde SOLO con un bloque JSON, sin texto antes ni después, con esta forma:
 {"menu":[{"fecha":"AAAA-MM-DD","comida":{"texto":"...","usa":["nombre exacto"],"comprar":["..."]},"cena":{"texto":"...","usa":["nombre exacto"],"comprar":["..."]}}],"notas":"una frase con lo más importante"}`;
+}
+
+const APARATOS = [['microondas', 'Microondas'], ['horno', 'Horno'], ['sarten', 'Sartén'], ['freidora', 'Freidora de aire (airfryer)'], ['batidora', 'Batidora de mano'], ['olla', 'Olla o cazuela'], ['crudo', 'Sin cocinar (ensaladas, bocadillos)']];
+// Proteínas: lo que se desmarca no puede salir; las palabras son las que vigila la pantalla de revisión.
+const PROT = [['pollo', 'Pollo', ['pollo']], ['conejo', 'Conejo', ['conejo']], ['pavo', 'Pavo', ['pavo']], ['ternera', 'Ternera', ['ternera', 'vacuno', 'chuletón', 'chuleton']],
+  ['cerdo', 'Cerdo', ['cerdo', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha', 'panceta']], ['cordero', 'Cordero', ['cordero']],
+  ['pescado_blanco', 'Pescado blanco', ['merluza', 'bacalao', 'lubina', 'dorada', 'pescado blanco']], ['pescado_azul', 'Pescado azul', ['sardina', 'salmón', 'salmon', 'atún', 'atun', 'caballa', 'anchoa', 'boquerón', 'boqueron']],
+  ['marisco', 'Marisco', ['gamba', 'marisco', 'mejillón', 'mejillon', 'calamar', 'langostino', 'pulpo', 'almeja']], ['huevos', 'Huevos', ['huevo', 'tortilla']], ['legumbres', 'Legumbres', ['lenteja', 'garbanzo', 'alubia', 'judía', 'judia']]];
+// Condiciones de salud combinables: la regla que se pasa a la IA y las palabras que vigila la revisión. Todo parte de cero: solo cuenta lo que marcas tú.
+const SALUD = [
+  ['sal', 'Sin sal / poca sal', 'sin sal añadida; evita embutidos, conservas, salsas y quesos salados, caldos de pastilla y procesados', ['embutido', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha']],
+  ['tension', 'Tensión alta', 'cuida la tensión: muy poca sal, nada de procesados salados, más verdura y fruta', []],
+  ['colesterol', 'Colesterol alto', 'poca grasa saturada: sin fritos, mantequilla, nata, panceta, bacon ni vísceras; prioriza legumbres, verdura, fibra y aceite de oliva en poca cantidad', ['mantequilla', 'nata', 'panceta', 'bacon', 'frito', 'foie']],
+  ['urico', 'Ácido úrico alto', 'evita vísceras, extractos de carne, marisco, pescado azul y alcohol; nada de bebidas azucaradas; más agua y verdura', ['hígado', 'higado', 'mollejas', 'riñón', 'riñon', 'anchoa', 'sardina']],
+  ['azucar', 'Azúcar / diabetes', 'sin azúcar añadido ni zumos; hidratos de absorción lenta (legumbres, integrales) y en cantidad moderada', ['azúcar', 'azucar', 'miel', 'zumo']],
+  ['alcohol', 'Sin alcohol', 'nada de alcohol, ni siquiera para cocinar', ['vino', 'cerveza', 'alcohol']],
+];
+const corto = n => String(n).split(',')[0].trim();
+const on = (arr, k, def) => Array.isArray(arr) ? arr.includes(k) : def;
+const caja = (n, t, marcada) => `<label class="fila" style="min-height:44px"><input type="checkbox" name="${n}" value="1" ${marcada ? 'checked' : ''} style="width:24px;height:24px"> <span>${t}</span></label>`;
+
+// De lo que has marcado (F, que se guarda) sale la petición. Sin marcas no hay límites: todo lo que limita viene del formulario.
+function armarOp(F, dias, notas) {
+  const cat = S.datos().catalogo || [], nom = ids => (ids || []).map(i => cat.find(p => p.id === i)).filter(Boolean).map(p => corto(p.nombre));
+  const sal = SALUD.filter(([k]) => on(F.salud, k, false)), ap = APARATOS.filter(([k]) => on(F.aparatos, k, true)), pr = PROT.filter(([k]) => on(F.prot, k, true));
+  return { dias, notas: notas || '', comidas: F.comidas && F.comidas.length ? F.comidas : ['comida'], min: Number(F.min) || 0,
+    salud: [...sal.map(x => `${x[1]}: ${x[2]}`), ...(F.salud_txt ? ['Otra condición: ' + F.salud_txt] : [])],
+    aparatos: ap.length < APARATOS.length ? ap.map(x => x[1]) : [], prot: pr.length < PROT.length ? pr.map(x => x[1]) : [], noProt: PROT.filter(([k]) => !on(F.prot, k, true)).map(x => x[1]),
+    gustan: nom(F.gustan), excl: [...nom(F.excl), ...lista(F.excl_txt)], caducar: F.caducar !== false, repetir: !!F.repetir };
+}
+// Palabras que la revisión busca en la respuesta: lo que el formulario prohíbe.
+function vigiladas(F) {
+  const cat = S.datos().catalogo || [], w = [];
+  for (const [k, , pal] of PROT) if (!on(F.prot, k, true)) w.push(...pal);
+  for (const [k, , , pal] of SALUD) if (on(F.salud, k, false)) w.push(...pal);
+  for (const i of F.excl || []) { const p = cat.find(x => x.id === i); if (p) w.push(corto(p.nombre)); }
+  return [...w, ...lista(F.excl_txt)];
+}
+
+// Formulario para pedir platos a la IA: lo que marcas se convierte en la petición. Las elecciones (menos fechas y nota) se recuerdan.
+function abrirFormIA() {
+  const d = S.datos(), f0 = hoy(), g0 = d.ajustes.ia_form || {};
+  const dias = Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i));
+  const cat = (d.catalogo || []).filter(p => p.categoria !== 'bebida').sort((a, b) => corto(a.nombre).localeCompare(corto(b.nombre), 'es'));
+  const lst = (pref, sel) => `<div style="max-height:30vh;overflow:auto;margin-top:6px">${cat.map(p => caja(pref + p.id, esc(corto(p.nombre)), (sel || []).includes(p.id))).join('') || '<p class="det">No hay productos en tu súper.</p>'}</div>`;
+  const par = (t, a, b, v) => campo(t, `<div class="fila"><input name="${a}" type="number" inputmode="numeric" min="0" placeholder="de" value="${v && v[0] ? v[0] : ''}" style="width:48%"><input name="${b}" type="number" inputmode="numeric" min="0" placeholder="a" value="${v && v[1] ? v[1] : ''}" style="width:48%"></div>`);
+  abrirHoja(`<h1>Pedir platos a la IA</h1><p class="sub">Lo que marques aquí es lo único que limita a la IA. Con esto armo la petición y luego revisas la respuesta antes de aplicarla.</p>
+    <h2>Qué días</h2><div class="card">${dias.map((f, i) => { const c = franjaTexto(f, 'comida'); return caja('d' + i, `${i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : esc(diaSemana(f))} <span class="det">${esc(fechaCorta(f))}${c.txt ? ' · ya tiene: ' + esc(c.txt.slice(0, 26)) : ''}</span>`, !c.txt && !c.fuera); }).join('')}</div>
+    <h2>Qué platos</h2><div class="card">${caja('k_comida', 'Comida', on(g0.comidas, 'comida', true))}${caja('k_cena', 'Cena', on(g0.comidas, 'cena', false))}</div>
+    <h2>Salud</h2><div class="card"><p class="det" style="margin:0">Marca las que coincidan; se combinan. Sin marcas, no hay restricciones de salud.</p>${SALUD.map(([k, t]) => caja('s_' + k, t, on(g0.salud, k, false))).join('')}
+      ${campo('Otra condición (opcional)', `<input name="salud_txt" value="${esc(g0.salud_txt || '')}" autocomplete="off" placeholder="p. ej. riñón, gluten">`)}</div>
+    <h2>Qué puedo comer</h2><div class="card"><p class="det" style="margin:0">Desmarca lo que NO quieras que salga.</p>${PROT.map(([k, t]) => caja('p_' + k, t, on(g0.prot, k, true))).join('')}</div>
+    <h2>Cómo</h2><div class="card">${campo('Tiempo máximo por plato', `<select name="min">${[[0, 'Sin límite'], [15, '15 minutos'], [30, '30 minutos'], [45, '45 minutos'], [60, '1 hora']].map(([v, t]) => `<option value="${v}" ${Number(g0.min || 0) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+      <p class="det" style="margin:6px 0 0">Con qué cocino:</p>${APARATOS.map(([k, t]) => caja('a_' + k, t, on(g0.aparatos, k, true))).join('')}
+      ${caja('caducar', 'Gastar primero lo que caduca antes', g0.caducar !== false)}${caja('repetir', 'Puede repetir un plato dos días (cocino una vez)', !!g0.repetir)}</div>
+    <h2>Cantidades <span class="det">(vacío = sin límite)</span></h2><div class="card">${par('Calorías por plato', 'kp0', 'kp1', g0.kcal_p)}${par('Proteína por plato (g)', 'pp0', 'pp1', g0.prot_p)}${par('Calorías al día', 'kd0', 'kd1', g0.kcal_d)}${par('Proteína al día (g)', 'pd0', 'pd1', g0.prot_d)}</div>
+    <h2>Alimentos</h2><div class="card">
+      <details><summary><b>Me gustan</b> <span class="det">(de tu súper; que salgan si encajan)</span></summary>${lst('g_', g0.gustan)}</details>
+      <details style="margin-top:8px"><summary><b>Excluir</b> <span class="det">(que no salgan nunca)</span></summary>${lst('x_', g0.excl)}</details>
+      ${campo('Otros excluidos (separados por comas)', `<input name="excl_txt" value="${esc(g0.excl_txt || '')}" autocomplete="off" placeholder="p. ej. coliflor, lentejas">`)}</div>
+    <h2>Mis reglas propias</h2><div class="card">${campo('Una por línea (se guardan)', `<textarea name="reglas" rows="4" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px" placeholder="p. ej. aceite de oliva en vaporizador&#10;patata pequeña al microondas">${esc(g0.reglas || '')}</textarea>`)}
+      ${campo('Algo más (solo esta vez)', `<input name="notas" autocomplete="off" placeholder="p. ej. algo ligero, viene mi hija">`)}</div>
+    <div class="fila" style="margin-top:10px">${IA.configurada() ? `<button class="btn main grow" type="submit" value="pedir">⚡ Pedir a ${esc(IA.nombreIA())}</button>` : ''}<button class="btn grow" type="submit" value="copiar">Solo copiar el texto</button></div>${IA.configurada() ? IA.pieIA() : ''}`, (g, acc) => {
+    const sel = dias.filter((f, i) => g['d' + i] === '1'), comidas = ['comida', 'cena'].filter(k => g['k_' + k] === '1');
+    if (!sel.length || !comidas.length) { avisar('Marca al menos un día y un plato.'); return false; }
+    const prot = PROT.filter(([k]) => g['p_' + k] === '1').map(x => x[0]), aparatos = APARATOS.filter(([k]) => g['a_' + k] === '1').map(x => x[0]);
+    if (!prot.length || !aparatos.length) { avisar('Deja al menos una proteína y una forma de cocinar.'); return false; }
+    const ids = pref => cat.filter(p => g[pref + p.id] === '1').map(p => p.id), par2 = (a, b) => [Number(g[a]) || 0, Number(g[b]) || 0];
+    d.ajustes.ia_form = { comidas, salud: SALUD.filter(([k]) => g['s_' + k] === '1').map(x => x[0]), salud_txt: (g.salud_txt || '').trim(), prot, aparatos, min: Number(g.min) || 0, caducar: g.caducar === '1', repetir: g.repetir === '1',
+      gustan: ids('g_'), excl: ids('x_'), excl_txt: (g.excl_txt || '').trim(), reglas: (g.reglas || '').trim(), kcal_p: par2('kp0', 'kp1'), prot_p: par2('pp0', 'pp1'), kcal_d: par2('kd0', 'kd1'), prot_d: par2('pd0', 'pd1') };
+    S.guardar();
+    const op = armarOp(d.ajustes.ia_form, sel, (g.notas || '').trim());
+    if (acc === 'copiar') { setTimeout(() => abrirHoja(`<h1>Texto para la IA</h1><p class="sub">Cópialo entero (mantén pulsado → seleccionar todo → copiar) y pégalo en la IA.</p><textarea readonly rows="16" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.75rem">${esc(promptIA(op))}</textarea>`, () => true), 0); return true; }
+    setTimeout(() => {
+      avisar('Pidiendo los platos a ' + IA.nombreIA() + '… puede tardar unos segundos.', 70000);
+      IA.preguntar(promptIA(op), { json: true }).then(t => { const r = parsear(t); if (!Array.isArray(r.menu) || !r.menu.length) throw new Error('La respuesta no trae «menu».'); revisar(r); })
+        .catch(e => avisar('No se pudo: ' + e.message, 7000));
+    }, 0);
+    return true;
+  });
 }
 
 const parsear = t => { const m = String(t).replace(/```(?:json)?/gi, '').match(/\{[\s\S]*\}/); if (!m) throw new Error('No encuentro un bloque JSON en la respuesta.'); return JSON.parse(m[0]); };
@@ -125,9 +212,7 @@ export function acciones(act, el) {
     return true;
   }
   if (act === 'menu-ia') {
-    avisar('Pidiendo el menú a ' + IA.nombreIA() + '… puede tardar unos segundos.', 70000);
-    IA.preguntar(promptIA(), { json: true }).then(t => { const r = parsear(t); if (!Array.isArray(r.menu) || !r.menu.length) throw new Error('La respuesta no trae «menu».'); revisar(r); })
-      .catch(e => avisar('No se pudo: ' + e.message, 7000));
+    abrirFormIA();
     return false;
   }
   if (act === 'menu-pegar') {
@@ -192,7 +277,7 @@ export function acciones(act, el) {
 }
 
 function revisar(r) {
-  const d = S.datos(), f0 = hoy(), validas = new Set(Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)));
+  const d = S.datos(), f0 = hoy(), vigil = vigiladas(S.datos().ajustes.ia_form || {}), validas = new Set(Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)));
   const filas = []; const aplicables = [];
   for (const dia of r.menu) {
     if (!validas.has(dia.fecha)) { filas.push(`<div class="card" style="border-color:var(--bad)"><b>${esc(dia.fecha || '?')}</b>: fecha fuera de los próximos ${DIAS} días. Se ignora.</div>`); continue; }
@@ -200,11 +285,11 @@ function revisar(r) {
       const p = dia[k]; if (!p || !p.texto) continue;
       const av = [], ids = [], texto = String(p.texto);
       const bajo = norm(texto + ' ' + (p.usa || []).join(' '));
-      for (const mala of NO_POR_AHORA) if (bajo.includes(norm(mala))) av.push(`contiene «${mala}» (no por ahora)`);
+      for (const x of vigil) if (x.length > 2 && bajo.includes(norm(x))) av.push(`contiene «${x}» (excluido en el formulario)`);
       for (const n of (p.usa || [])) { const it = d.nevera.find(x => norm(x.nombre) === norm(n)) || d.nevera.find(x => norm(x.nombre).includes(norm(n)) && norm(n).length > 4); if (it) ids.push(it.id); else av.push(`«${n}» no está en el almacén`); }
-      const bloqueo = av.some(a => /no por ahora/.test(a));
+      const bloqueo = av.some(a => /no por ahora|excluido/.test(a));
       filas.push(`<div class="card" style="${bloqueo ? 'border-color:var(--bad)' : av.length ? 'border-color:var(--warn)' : ''}"><div class="det">${esc(diaSemana(dia.fecha))} ${esc(fechaCorta(dia.fecha))} · ${k}</div><div>${esc(texto)}</div>
-        ${(p.comprar || []).length ? `<div class="det">Comprar: ${esc(p.comprar.join(', '))}</div>` : ''}${av.map(a => `<div class="chip ${/no por ahora/.test(a) ? 'bad' : 'warn'}" style="margin-top:4px">${esc(a)}</div>`).join(' ')}</div>`);
+        ${(p.comprar || []).length ? `<div class="det">Comprar: ${esc(p.comprar.join(', '))}</div>` : ''}${av.map(a => `<div class="chip ${/no por ahora|excluido/.test(a) ? 'bad' : 'warn'}" style="margin-top:4px">${esc(a)}</div>`).join(' ')}</div>`);
       if (!bloqueo) aplicables.push({ f: dia.fecha, k, texto, ids });
     }
   }
