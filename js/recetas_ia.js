@@ -5,6 +5,7 @@ import * as S from './store.js';
 import { esc, nuevoId } from './util.js';
 import { abrirHoja, avisar } from './ui.js';
 import * as IA from './ia.js';
+import { htmlCriterios, leerCriterios } from './criterios.js';
 import { GEN } from './nutri_generica.js';
 import { nutriReceta, enRango } from './generador.js';
 import { diasHasta } from './util.js';
@@ -80,33 +81,34 @@ export function validarReceta(x, F, existentes, vigil) {
 }
 
 export function abrirPedirRecetas(alTerminar) {
-  const F = S.datos().ajustes.ia_form;
-  const resumen = F ? [(F.salud || []).length ? SALUD.filter(([k]) => F.salud.includes(k)).map(x => x[1]).join(', ') : 'sin condiciones de salud', Array.isArray(F.prot) && F.prot.length < PROT.length ? 'proteínas: ' + PROT.filter(([k]) => F.prot.includes(k)).map(x => x[1].toLowerCase()).join(', ') : 'todas las proteínas'].join(' · ') : null;
+  const F = S.datos().ajustes.ia_form || {};
   abrirHoja(`<h1>Pedir recetas a la IA</h1>
-    <p class="sub">La IA propone, el código comprueba cada receta y las que pasan quedan «pendientes» hasta que las aceptes.</p>
-    ${F ? `<div class="card"><b>Con tus criterios del formulario del Menú</b><div class="det">${esc(resumen)}</div><div class="det">Para cambiarlos: Menú → Pedir menú a la IA.</div></div>`
-        : '<div class="card" style="border-color:var(--warn)"><b>Aún no has marcado tus criterios</b><div class="det">Se pedirán sin restricciones de salud ni de alimentos. Mejor márcalos antes en Menú → Pedir menú a la IA (puedes cerrar sin enviar).</div></div>'}
-    <label class="campo"><span>¿Cuántas recetas?</span><select name="n">${[10, 20, 30, 50].map(v => `<option value="${v}" ${v === 50 ? 'selected' : ''}>${v}${v === 50 ? ' (unas 5 peticiones, 2-5 minutos)' : ''}</option>`).join('')}</select></label>
-    <div class="fila"><button class="btn main grow" type="submit" value="pedir">⚡ Pedir</button></div>${IA.pieIA()}`, f => {
+    <p class="sub">Marca los criterios de la persona. La IA propone, el código comprueba cada receta y las que pasan quedan «pendientes» hasta que las aceptes. Lo que marques aquí se guarda y vale también para «Pedir menú a la IA».</p>
+    ${htmlCriterios(F)}
+    <h2>Cuántas</h2><div class="card"><label class="campo"><span>¿Cuántas recetas?</span><select name="n">${[10, 20, 30, 50].map(v => `<option value="${v}" ${v === 50 ? 'selected' : ''}>${v}${v === 50 ? ' (unas 5 peticiones, 2-5 minutos)' : ''}</option>`).join('')}</select></label></div>
+    <div class="fila" style="margin-top:10px"><button class="btn main grow" type="submit" value="pedir">⚡ Pedir</button></div>${IA.pieIA()}`, f => {
+    const r = leerCriterios(f, S.datos().ajustes.ia_form || {}); if (r.error) { avisar(r.error); return false; }
+    S.datos().ajustes.ia_form = r.F; S.guardar();
     const n = Math.min(50, Math.max(TANDA, Number(f.n) || 50)); setTimeout(() => ejecutar(n, alTerminar), 0); return true;
   });
 }
 
 async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
   const d = S.datos(), F = d.ajustes.ia_form || {}, total = Math.ceil(n / TANDA), vigil = vigiladas(F), rechazos = {};
-  let nuevas = 0, fallos = 0;
+  let nuevas = 0, fallos = 0, recibidas = 0;
   for (let t = 1; t <= total; t++) {
-    avisar(`Pidiendo recetas a la IA… tanda ${t} de ${total} (${nuevas} añadidas)`, 90000);
+    avisar(`Recetas recibidas: ${recibidas} de ${n} · faltan ${Math.max(0, n - recibidas)} · válidas ${nuevas}. Pidiendo la tanda ${t} de ${total}…`, 90000);
     let r;
     try { r = parsear(await IA.preguntar(promptRecetas(F, TANDA, t, total, d.recetas.map(x => x.nombre), prefer), { json: true })); if (!Array.isArray(r.recetas)) throw new Error('La respuesta no trae «recetas».'); }
     catch (e) { if (++fallos >= 2) { avisar(`Se paró en la tanda ${t}: ${e.message}. Llevas ${nuevas} recetas nuevas.`, 9000); break; } t--; continue; }
+    recibidas += r.recetas.length;
     for (const x of r.recetas) { const v = validarReceta(x, F, d.recetas, vigil); if (v.rec) { d.recetas.push(v.rec); nuevas++; } else rechazos[v.motivo] = (rechazos[v.motivo] || 0) + 1; }
     if (nuevas && alTerminar) { alTerminar(); alTerminar = null; }
     S.guardar();
   }
   const rech = Object.entries(rechazos).sort((a, b) => b[1] - a[1]), nrech = rech.reduce((s, x) => s + x[1], 0);
   if (alFinal) setTimeout(alFinal, 0);
-  if (nuevas || nrech) avisar(`${nuevas} recetas nuevas, pendientes de revisar.${nrech ? ` El código descartó ${nrech}: ${rech.slice(0, 3).map(x => `${x[0]} (${x[1]})`).join(', ')}.` : ''}`, 12000);
+  if (nuevas || nrech) avisar(`Pedidas ${n}, recibidas ${recibidas}${recibidas < n ? ` (faltan ${n - recibidas})` : ''}. ${nuevas} recetas válidas, pendientes de revisar.${nrech ? ` El código descartó ${nrech}: ${rech.slice(0, 3).map(x => `${x[0]} (${x[1]})`).join(', ')}.` : ''}`, 12000);
 }
 
 // Desde «Elegir del recetario»: pide una tanda de recetas pensadas para gastar lo que caduca pronto o está abierto.
