@@ -50,6 +50,8 @@ Responde SOLO con un bloque JSON, sin texto antes ni después:
 }
 
 // Comprobación por código de una receta que propone la IA. Devuelve {rec} si vale o {motivo} si no.
+// Gramos máximos razonables de un ingrediente en un plato de una persona.
+const tope = k => GRUPO[k] ? 300 : k === 'patata' ? 300 : (GEN[k]?.kcal || 0) > 300 ? 100 : (GEN[k]?.kcal || 0) < 60 ? 300 : 250;
 export function validarReceta(x, F, existentes, vigil) {
   if (x && typeof x === 'object') x = { ...x, nombre: x.nombre || x.name, pasos: x.pasos || x.preparacion || x.steps || x.instrucciones, aparatos: x.aparatos || x.equipment, min: x.min || x.minutos || x.tiempo, ing: (x.ing || x.ingredientes || x.ingredients || []).map?.(i => i && ({ k: i.k || i.clave || i.key || i.ingrediente, g: i.g ?? i.gramos ?? i.cantidad ?? i.grams })) };
   if (!x || typeof x.nombre !== 'string' || x.nombre.trim().length < 3) return { motivo: 'sin nombre' };
@@ -71,13 +73,27 @@ export function validarReceta(x, F, existentes, vigil) {
   const rec = { id: 'ia-' + nuevoId(), nombre: x.nombre.trim().slice(0, 90), tipo: 'comida', ing, pasos: String(x.pasos || '').trim().slice(0, 400), aparatos: aps, min, estado: 'pendiente', origen: 'ia' };
   const grupos = ing.filter(i => GRUPO[i.k]).sort((a, b) => b.g * GEN[b.k].prot - a.g * GEN[a.k].prot);
   rec.prot = grupos.length ? GRUPO[grupos[0].k] : 'otra';
-  const n = nutriReceta(rec), [k0, k1] = (F.kcal_p || []).map(Number), [p0, p1] = (F.prot_p || []).map(Number), hayRango = k0 || k1 || p0 || p1;
-  if (hayRango) { if ((k0 && n.kcal < k0) || (k1 && n.kcal > k1)) return { motivo: 'calorías fuera de rango' }; if ((p0 && n.prot < p0) || (p1 && n.prot > p1)) return { motivo: 'proteína fuera de rango' }; }
-  else if (!enRango(n)) return { motivo: 'calorías o proteína fuera de rango' };
+  const [k0, k1] = (F.kcal_p || []).map(Number), [p0, p1] = (F.prot_p || []).map(Number), hayRango = k0 || k1 || p0 || p1;
+  const motivoRango = n => hayRango ? (((k0 && n.kcal < k0) || (k1 && n.kcal > k1)) ? 'calorías fuera de rango' : ((p0 && n.prot < p0) || (p1 && n.prot > p1)) ? 'proteína fuera de rango' : null) : (enRango(n) ? null : 'calorías o proteína fuera de rango');
+  let n = nutriReceta(rec);
+  if (motivoRango(n)) {                                    // la IA calcula las cantidades «a ojo»: se prueba a subir o bajar raciones (proteína por un lado, el resto por otro) hasta encajar
+    let mejor = null;
+    for (let sp = 0.6; sp <= 2.0001; sp += 0.05) for (let so = 0.4; so <= 1.8001; so += 0.05) {
+      const prueba = { ...rec, ing: rec.ing.map(i => ({ k: i.k, g: i.k === 'aceite' ? i.g : Math.max(5, Math.round(i.g * (GRUPO[i.k] ? sp : so) / 5) * 5) })) };
+      if (prueba.ing.some(i => i.g > tope(i.k))) continue;         // raciones que un plato real no lleva
+      const m = nutriReceta(prueba); if (motivoRango(m)) continue;
+      const coste = Math.abs(sp - 1) + Math.abs(so - 1); if (!mejor || coste < mejor.coste) mejor = { coste, prueba, m };
+    }
+    if (mejor) { rec.ing = mejor.prueba.ing; rec.nota = 'Cantidades ajustadas por la app para cumplir tus calorías y proteína (la IA las había calculado a ojo).'; n = mejor.m; }
+  }
+  const fallo = (motivo) => ({ motivo, rec, n });
+  const mr = motivoRango(n); if (mr) return fallo(mr);
   const estricta = (F.salud || []).some(k => k === 'sal' || k === 'tension');
-  if (n.sal > (estricta ? 1.5 : 3)) return { motivo: 'demasiada sal' };
-  const clave = ing.map(i => i.k).sort().join('|');
-  if (existentes.some(e => norm(e.nombre) === norm(rec.nombre) || (e.ing && e.ing.map(i => i.k).sort().join('|') === clave))) return { motivo: 'repetida' };
+  const salLeg = rec.ing.filter(i => GRUPO[i.k] === 'legumbres').reduce((t, i) => t + i.g * GEN[i.k].sal / 100, 0);          // las legumbres de bote bajan de sal al enjuagarlas
+  if (salLeg > 0) rec.nota = ((rec.nota ? rec.nota + ' ' : '') + 'Enjuaga bien las legumbres del bote: así baja la sal.').trim();
+  if (n.sal - 0.4 * salLeg > (estricta ? 1.5 : 3)) return fallo('demasiada sal');
+  const clave = rec.ing.map(i => i.k).sort().join('|');
+  if (existentes.some(e => norm(e.nombre) === norm(rec.nombre) || (e.ing && e.ing.map(i => i.k).sort().join('|') === clave))) return fallo('repetida');
   return { rec };
 }
 
@@ -96,7 +112,7 @@ export function abrirPedirRecetas(alTerminar) {
 
 async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
   const d = S.datos(), F = d.ajustes.ia_form || {}, total = Math.ceil(n / TANDA), vigil = vigiladas(F), rechazos = {};
-  let nuevas = 0, fallos = 0, recibidas = 0, parado = '';
+  let nuevas = 0, fallos = 0, recibidas = 0, parado = ''; d.rechazadas_ia = [];
   for (let t = 1; t <= total; t++) {
     avisar(`Recetas recibidas: ${recibidas} de ${n} · faltan ${Math.max(0, n - recibidas)} · válidas ${nuevas}. Pidiendo la tanda ${t} de ${total}…`, 90000);
     let r;
@@ -107,7 +123,7 @@ async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
       r = { recetas: lista };
     } catch (e) { if (++fallos >= 2) { parado = `Se paró en la tanda ${t}: ${e.message}`; break; } t--; continue; }
     recibidas += r.recetas.length;
-    for (const x of r.recetas) { const v = validarReceta(x, F, d.recetas, vigil); if (v.rec) { d.recetas.push(v.rec); nuevas++; } else rechazos[v.motivo] = (rechazos[v.motivo] || 0) + 1; }
+    for (const x of r.recetas) { const v = validarReceta(x, F, d.recetas, vigil); if (v.rec && !v.motivo) { d.recetas.push(v.rec); nuevas++; } else { rechazos[v.motivo] = (rechazos[v.motivo] || 0) + 1; if (d.rechazadas_ia.length < 80) d.rechazadas_ia.push({ nombre: String(x && (x.nombre || x.name) || '?').slice(0, 80), motivo: v.motivo, kcal: v.n && v.n.kcal, prot: v.n && v.n.prot, sal: v.n && v.n.sal, rec: v.rec || null }); } }
     if (nuevas && alTerminar) { alTerminar(); alTerminar = null; }
     S.guardar();
   }
