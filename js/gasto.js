@@ -26,10 +26,11 @@ const fila = (p, pref) => `<div class="card" style="margin-bottom:8px"><div clas
 // Con `ids` (los productos que se habían previsto en el menú) salen ya elegidos; sin ellos se buscan por el nombre de lo comido.
 export function abrirGasto(texto, ids = null) {
   const d = S.datos(), previstos = ids ? ids.map(i => d.nevera.find(p => p.id === i)).filter(p => p && !p.sin_cuenta) : null;
-  const cands = previstos || candidatos(texto).slice(0, 5);
+  const huevos = /tortilla|huevo/i.test(texto) ? d.nevera.filter(p => !p.sin_cuenta && /huevo/i.test(p.nombre)).sort((a, b) => String(a.caducidad || '9999').localeCompare(String(b.caducidad || '9999'))) : [];          // una tortilla gasta huevo aunque el menú no lo tuviera previsto
+  const cands = previstos ? [...previstos, ...huevos.filter(h => !previstos.includes(h))] : [...new Set([...huevos, ...candidatos(texto)])].slice(0, 5);
   const otros = d.nevera.filter(p => !p.sin_cuenta && p.ubicacion !== 'congelador' && !cands.includes(p)).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   abrirHoja(`<h1>${previstos ? '¿Descontamos lo previsto?' : '¿Qué has gastado de casa?'}</h1><p class="sub">${esc(texto)}</p>${previstos ? '<p class="det">Esto es lo que tenías previsto usar del almacén. Confirma o ajusta las cantidades.</p>' : ''}
-    ${cands.map(p => fila(p, previstos ? defecto(p) : '0')).join('') || '<div class="card vacio" style="margin:0 0 8px">No veo nada del almacén en lo que comiste.</div>'}
+    ${cands.map(p => fila(p, huevos[0] === p ? 'u' : huevos.includes(p) ? '0' : previstos ? defecto(p) : '0')).join('') || '<div class="card vacio" style="margin:0 0 8px">No veo nada del almacén en lo que comiste.</div>'}
     <label class="campo"><span>Otro producto de casa (opcional)</span><select name="otro"><option value="">— ninguno —</option>${otros.map(p => `<option value="${esc(p.id)}">${esc(p.nombre.slice(0, 50))} (${esc(p.cantidad)} ${esc(p.unidad)})</option>`).join('')}</select></label>
     <label class="campo"><span>¿Cuánto del otro?</span><select name="g_otro">${OPC.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
     <label class="campo"><span>Cantidad exacta del otro</span><input name="q_otro" type="number" inputmode="decimal" min="0" step="any"></label>

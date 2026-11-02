@@ -1,7 +1,7 @@
 // Pantalla «Almacén de comida»: lo que hay en casa, con caducidades. Ordena por lo que antes hay que gastar.
 import * as S from '../store.js';
 import { esc, diasHasta, fechaCorta, nuevoId, hoy } from '../util.js';
-import { abrirHoja, campo, avisar, botonFoto, ofrecerDeshacer } from '../ui.js';
+import { abrirHoja, campo, avisar, botonFoto, ofrecerDeshacer, confirmar } from '../ui.js';
 import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
 import * as IA from '../ia.js';
 
@@ -118,13 +118,14 @@ export function render() {
   const tarjetas = lista.map(p => {
     const c = etiquetaCaducidad(p), n = diasHasta(caducidadEfectiva(p));
     const cls = n !== null && p.ubicacion !== 'congelador' ? (n < 0 ? 'caducado' : n <= 3 ? 'alerta' : '') : '';
-    const menos = p.sin_cuenta ? `<button type="button" class="btn mini" data-act="sc-comprar" data-id="${p.id}" aria-label="Añadir ${esc(p.nombre)} a la lista de la compra">Comprar</button><button type="button" class="btn mini" data-act="sc-baja" data-id="${p.id}" aria-label="Se acabó ${esc(p.nombre)}">Se acabó</button>` : CONTABLES.has(p.unidad) ? `<button type="button" class="btn mini" data-act="menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : '';
-    return `<div class="item ${cls}">
-      <button type="button" class="grow" style="background:none;border:0;text-align:left;padding:0" data-act="editar" data-id="${p.id}">
+    const enLista = (d.compra || []).some(x => nrm(x.nombre) === nrm(p.nombre));
+    const menos = p.sin_cuenta ? `${enLista ? '<span class="chip">🛒 en la lista</span>' : `<button type="button" class="btn mini" data-act="sc-comprar" data-id="${p.id}" aria-label="Añadir ${esc(p.nombre)} a la lista de la compra">Comprar</button>`}<button type="button" class="btn mini" data-act="sc-baja" data-id="${p.id}" aria-label="Se acabó ${esc(p.nombre)}">Se acabó</button>` : CONTABLES.has(p.unidad) ? `<button type="button" class="btn mini" data-act="menos" data-id="${p.id}" aria-label="Gastar uno de ${esc(p.nombre)}">−1</button>` : '';
+    return `<div class="item ${cls}" style="flex-wrap:wrap">
+      <button type="button" style="background:none;border:0;text-align:left;padding:0;flex:1 1 100%;min-width:0" data-act="editar" data-id="${p.id}">
         <div class="nom">${esc(p.nombre)}</div>
         <div class="det">${detalle(p)}</div>
       </button>
-      <span class="chip ${c.clase}">${esc(c.txt)}</span>${menos}</div>`;
+      <div class="fila" style="flex:1 1 100%;flex-wrap:wrap"><span class="chip ${c.clase}">${esc(c.txt)}</span>${menos}</div></div>`;
   }).join('');
 
   return `
@@ -260,7 +261,15 @@ export function acciones(act, el) {
   }
   if (act === 'sc-baja') {
     const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;
-    const copia = S.exportar(); d.nevera = d.nevera.filter(x => x !== p); S.guardar(); ofrecerDeshacer(copia); avisar(`«${p.nombre}» dado de baja.`); return true;
+    const copia = S.exportar(), enLista = (d.compra ||= []).some(x => nrm(x.nombre) === nrm(p.nombre));
+    const baja = comprar => {
+      d.nevera = d.nevera.filter(x => x !== p);
+      if (comprar && !enLista) d.compra.push({ id: nuevoId(), nombre: p.nombre, cantidad: null, unidad: '', seccion: 'super', nota: '', hecho: false });
+      S.guardar(); ofrecerDeshacer(copia); avisar(comprar && !enLista ? `«${p.nombre}» dado de baja y apuntado en la compra.` : `«${p.nombre}» dado de baja.`);
+    };
+    if (enLista) baja(false);
+    else confirmar({ titulo: 'Se acabó', texto: `«${p.nombre}» se da de baja del almacén.\n¿Lo apunto en la lista de la compra?`, si: 'Sí, a la lista', no: 'No, solo la baja', alSi: () => baja(true), alNo: () => baja(false) });
+    return false;
   }
   if (act === 'menos') {
     const p = d.nevera.find(x => x.id === el.dataset.id); if (!p) return true;

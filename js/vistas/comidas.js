@@ -3,7 +3,7 @@
 import * as S from '../store.js';
 import { esc, diaVista, esOtroDia } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
-import { abrirGasto } from '../gasto.js';
+import { abrirGasto, candidatos } from '../gasto.js';
 import { abrirCambiar } from './menu.js';
 
 const PLANEABLES = new Set(['comida', 'cena']);                 // estas dos se planean en la pestaña Menú
@@ -46,7 +46,10 @@ export function acciones(act, el) {
   if (act === 'com-ok') {                                   // comí lo previsto: se apunta y se ofrece descontar del almacén lo que estaba previsto
     reg[k] = { estado: 'comi', texto: previsto(k, fr[2]), hora: ahora(), prods: [] }; S.guardar();
     const pl = ((d.plan || {})[diaVista()] || {})[k];
-    if (PLANEABLES.has(k) && pl && !pl.fuera && (pl.ids || []).length) setTimeout(() => abrirGasto(reg[k].texto, pl.ids), 0);
+    if (PLANEABLES.has(k) && !(pl && pl.fuera)) {
+      if (pl && (pl.ids || []).length) setTimeout(() => abrirGasto(reg[k].texto, pl.ids), 0);
+      else if (/tortilla|huevo/i.test(reg[k].texto) || candidatos(reg[k].texto).length) setTimeout(() => abrirGasto(reg[k].texto), 0);      // la cena fija (tortilla) también gasta del almacén
+    }
     return true;
   }
   if (act === 'com-no') { reg[k] = { estado: 'no', texto: '', hora: ahora(), prods: [] }; S.guardar(); return true; }
