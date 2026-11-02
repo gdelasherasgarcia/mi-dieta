@@ -6,6 +6,7 @@ import { caducidadEfectiva } from '../producto.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 import { proponer, faltantes } from '../generador.js';
 import * as IA from '../ia.js';
+import { parsearJSON, rescatarLista } from '../json_ia.js';
 
 const DIAS = 6;
 const sumaDias = (f, n) => iso(new Date(desdeIso(f).getTime() + n * 86400000));
@@ -211,7 +212,7 @@ function abrirFormIA() {
   });
 }
 
-const parsear = t => { const m = String(t).replace(/```(?:json)?/gi, '').match(/\{[\s\S]*\}/); if (!m) throw new Error('No encuentro un bloque JSON en la respuesta.'); return JSON.parse(m[0]); };
+const parsear = t => { try { const r = parsearJSON(t); if (Array.isArray(r.menu)) return r; throw new Error('sin menu'); } catch (e) { const menu = rescatarLista(t, 'menu'); if (menu.length) return { menu, notas: '' }; throw e; } };
 
 // Ventana para fijar/cambiar la comida o la cena de un día (la usan Menú y, para apuntar lo real, Hoy). `despues` se llama con lo guardado.
 export function abrirCambiar(f, k, despues) {

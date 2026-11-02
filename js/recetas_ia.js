@@ -6,6 +6,7 @@ import { esc, nuevoId } from './util.js';
 import { abrirHoja, avisar } from './ui.js';
 import * as IA from './ia.js';
 import { htmlCriterios, leerCriterios } from './criterios.js';
+import { parsearJSON, rescatarLista } from './json_ia.js';
 import { GEN } from './nutri_generica.js';
 import { nutriReceta, enRango } from './generador.js';
 import { diasHasta } from './util.js';
@@ -15,7 +16,6 @@ import { PROT, SALUD, APARATOS, armarOp, vigiladas, corto } from './vistas/menu.
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 const GRUPO = { contramuslo: 'pollo', pechuga_pollo: 'pollo', muslo_pollo: 'pollo', conejo: 'conejo', pavo: 'pavo', ternera: 'ternera', cerdo: 'cerdo', cordero: 'cordero', merluza: 'pescado_blanco', salmon: 'pescado_azul', sardina: 'pescado_azul', gamba: 'marisco', huevo: 'huevos', lentejas: 'legumbres', garbanzos: 'legumbres', alubias: 'legumbres' };
 const TANDA = 10;
-const parsear = t => { const m = String(t).replace(/```(?:json)?/gi, '').match(/\{[\s\S]*\}/); if (!m) throw new Error('No encuentro un bloque JSON en la respuesta.'); return JSON.parse(m[0]); };
 
 function permitidas(F) { return new Set(PROT.map(x => x[0]).filter(k => !Array.isArray(F.prot) || F.prot.includes(k))); }
 
@@ -99,8 +99,11 @@ async function ejecutar(n, alTerminar, prefer = [], alFinal = null) {
   for (let t = 1; t <= total; t++) {
     avisar(`Recetas recibidas: ${recibidas} de ${n} · faltan ${Math.max(0, n - recibidas)} · válidas ${nuevas}. Pidiendo la tanda ${t} de ${total}…`, 90000);
     let r;
-    try { r = parsear(await IA.preguntar(promptRecetas(F, TANDA, t, total, d.recetas.map(x => x.nombre), prefer), { json: true })); if (!Array.isArray(r.recetas)) throw new Error('La respuesta no trae «recetas».'); }
-    catch (e) { if (++fallos >= 2) { avisar(`Se paró en la tanda ${t}: ${e.message}. Llevas ${nuevas} recetas nuevas.`, 9000); break; } t--; continue; }
+    try {
+      const texto = await IA.preguntar(promptRecetas(F, TANDA, t, total, d.recetas.map(x => x.nombre), prefer), { json: true });
+      try { r = parsearJSON(texto); if (!Array.isArray(r.recetas)) throw new Error('La respuesta no trae «recetas».'); }
+      catch (e0) { const lista = rescatarLista(texto, 'recetas'); if (!lista.length) throw e0; r = { recetas: lista }; }       // respuesta rara o cortada: se aprovechan las recetas que llegaron enteras
+    } catch (e) { if (++fallos >= 2) { avisar(`Se paró en la tanda ${t}: ${e.message}. Llevas ${nuevas} recetas nuevas.`, 9000); break; } t--; continue; }
     recibidas += r.recetas.length;
     for (const x of r.recetas) { const v = validarReceta(x, F, d.recetas, vigil); if (v.rec) { d.recetas.push(v.rec); nuevas++; } else rechazos[v.motivo] = (rechazos[v.motivo] || 0) + 1; }
     if (nuevas && alTerminar) { alTerminar(); alTerminar = null; }
