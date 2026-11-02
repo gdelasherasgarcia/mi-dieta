@@ -4,10 +4,15 @@ import * as S from '../store.js';
 import { esc, diaVista, esOtroDia } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 import { abrirGasto } from '../gasto.js';
+import { abrirCambiar } from './menu.js';
+
+const PLANEABLES = new Set(['comida', 'cena']);                 // estas dos se planean en la pestaña Menú
 
 export const FRANJAS = [['desayuno', 'Desayuno', 'comida_desayuno'], ['media', 'Media mañana', 'comida_media'], ['comida', 'Comida', 'comida_comida'], ['cena', 'Cena', 'comida_cena']];
 const ahora = () => esOtroDia() ? '' : new Date().toTimeString().slice(0, 5);          // en otro día no se apunta la hora de ahora
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+// Lo previsto de cada franja: si en la pestaña Menú has planeado la comida o la cena de ese día, eso; si no, lo fijo de «Mis comidas fijas».
+const previsto = (k, clave) => { const d = S.datos(), p = (d.plan || {})[diaVista()]?.[k]; return (p && p.texto) ? p.texto : (d.ajustes[clave] || ''); };
 const diaCom = f => ((S.datos().comidas ||= {})[f] ||= {});
 
 export function render() {
@@ -16,7 +21,7 @@ export function render() {
   return `
     <h2>Comidas <span class="chip ${hechas === 4 ? 'ok' : ''}" style="text-transform:none;letter-spacing:0">${hechas} de 4</span></h2>
     ${FRANJAS.map(([k, t, clave]) => {
-      const r = reg[k], prev = aj[clave] || '';
+      const r = reg[k], prev = previsto(k, clave);
       const estado = !r ? '' : r.estado === 'comi' ? `<span class="chip ok">comido${r.hora ? ' ' + esc(r.hora) : ''}</span>` : r.estado === 'cambie' ? `<span class="chip warn">cambiado${r.hora ? ' ' + esc(r.hora) : ''}</span>` : `<span class="chip">no comí</span>`;
       return `<div class="item" style="display:block;${r && (r.estado === 'comi' || r.estado === 'cambie') ? 'border-color:var(--ok);background:var(--ok-soft)' : ''}">
         <div class="fila sep"><span class="nom">${t}</span>${estado}</div>
@@ -38,9 +43,23 @@ function productosDe(texto) {                                   // ids del catá
 export function acciones(act, el) {
   const d = S.datos(), reg = diaCom(diaVista()), k = el.dataset.k, fr = FRANJAS.find(x => x[0] === k);
   if (!fr) return false;
-  if (act === 'com-ok') { reg[k] = { estado: 'comi', texto: d.ajustes[fr[2]] || '', hora: ahora(), prods: [] }; S.guardar(); return true; }
+  if (act === 'com-ok') {                                   // comí lo previsto: se apunta y se ofrece descontar del almacén lo que estaba previsto
+    reg[k] = { estado: 'comi', texto: previsto(k, fr[2]), hora: ahora(), prods: [] }; S.guardar();
+    const pl = ((d.plan || {})[diaVista()] || {})[k];
+    if (PLANEABLES.has(k) && pl && !pl.fuera && (pl.ids || []).length) setTimeout(() => abrirGasto(reg[k].texto, pl.ids), 0);
+    return true;
+  }
   if (act === 'com-no') { reg[k] = { estado: 'no', texto: '', hora: ahora(), prods: [] }; S.guardar(); return true; }
   if (act === 'com-borrar') { delete reg[k]; S.guardar(); return true; }
+  if (act === 'com-otro' && PLANEABLES.has(k)) {              // comida y cena: se corrige lo real en la misma ventana del Menú y se descuenta lo que se usó
+    const antes = ((d.plan || {})[diaVista()] || {})[k] || {}, textoAntes = antes.texto || previsto(k, fr[2]), idsAntes = (antes.ids || []).slice().sort().join();
+    abrirCambiar(diaVista(), k, hecho => {
+      const igual = norm(hecho.texto) === norm(textoAntes) && (hecho.ids || []).slice().sort().join() === idsAntes;
+      reg[k] = { estado: igual ? 'comi' : 'cambie', texto: hecho.texto, hora: ahora(), prods: productosDe(hecho.texto) }; S.guardar();
+      if (!hecho.fuera && (hecho.ids || []).length) abrirGasto(hecho.texto, hecho.ids); else if (!hecho.fuera) abrirGasto(hecho.texto);
+    });
+    return false;
+  }
   if (act === 'com-otro') {
     const r = reg[k];
     abrirHoja(`<h1>${esc(fr[1])}</h1><p class="sub">Lo que comiste de verdad.</p>
@@ -50,7 +69,7 @@ export function acciones(act, el) {
       <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>`, f => {
       const texto = (f.texto || '').trim(); if (!texto) { avisar('Apunta qué comiste.'); return false; }
       reg[k] = { estado: 'cambie', texto, hora: f.hora || ahora(), prods: productosDe(texto) };
-      if (norm(texto) === norm(d.ajustes[fr[2]])) reg[k].estado = 'comi';
+      if (norm(texto) === norm(previsto(k, fr[2]))) reg[k].estado = 'comi';
       S.guardar(); setTimeout(() => abrirGasto(texto), 0); return true;
     });
     return true;

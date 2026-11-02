@@ -28,7 +28,7 @@ export function render() {
 
     <h2>Inteligencia artificial</h2>
     <div class="card">
-      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.config().proveedor === 'openai' ? (IA.config().modelo || 'otra IA') : 'Gemini')}</b>. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
+      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.etiqueta(IA.config()))}</b>${IA.valida(IA.config().respaldo) ? ` · respaldo: <b>${esc(IA.etiqueta(IA.config().respaldo))}</b>` : ''}. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
       <button type="button" class="btn grande" data-act="ia-conectar">🤖 ${IA.configurada() ? 'Cambiar o desconectar la IA' : 'Conectar una IA'}</button>
     </div>
 
@@ -56,25 +56,41 @@ export function render() {
 export function acciones(act, el) {
   const d = S.datos();
   if (act === 'ia-conectar') {
-    const c = IA.config() || { proveedor: 'gemini', clave: '', modelo: '', url: '' };
+    const c = IA.config() || {}, r = c.respaldo || {}, ops = (sel, vacio) => (vacio ? `<option value="">${vacio}</option>` : '') + Object.entries(IA.PRESETS).map(([k, v]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
     abrirHoja(`<h1>Conectar una IA</h1>
       <p class="det" style="white-space:pre-line">⚠ ${esc(IA.AVISO_DATOS)}</p>
-      <label class="campo"><span>¿Qué IA?</span><select name="proveedor">${Object.entries(IA.PROVEEDORES).map(([k, v]) => `<option value="${k}" ${c.proveedor === k ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('')}</select></label>
-      <p class="det" style="margin:-4px 0 10px">Gemini: clave gratuita en aistudio.google.com/apikey (con tu cuenta de Google). Otra IA: pon también su dirección y el modelo. Los límites y las condiciones gratuitas los fija cada proveedor y pueden cambiar.</p>
-      ${campo('Clave de la IA (API key)', `<input name="clave" type="password" value="${esc(c.clave)}" autocomplete="off" placeholder="la que te da el proveedor">`)}
-      <label class="fila" style="min-height:44px"><input type="checkbox" onchange="this.form.clave.type = this.checked ? 'text' : 'password'"> Ver la clave (para comprobar que está bien pegada)</label>
-      ${campo('Modelo (déjalo vacío con Gemini si no sabes)', `<input name="modelo" value="${esc(c.modelo || '')}" autocomplete="off" placeholder="p. ej. gemini-flash-latest">`)}
-      ${campo('Dirección base (solo «otra IA»)', `<input name="url" value="${esc(c.url || '')}" autocomplete="off" placeholder="https://api.openai.com/v1">`)}
-      <p class="det">La clave se guarda solo en este móvil, aparte de tus datos: no va en las copias de seguridad.</p>
+      <h2>IA principal</h2>
+      <label class="campo"><span>¿Qué IA?</span><select name="preset">${ops(IA.presetDe(c))}</select></label>
+      ${campo('Clave de la IA (API key)', `<input name="clave" type="password" value="${esc(c.clave || '')}" autocomplete="off" placeholder="la que te da el proveedor">`)}
+      ${campo('Modelo (vacío = el habitual de esa IA)', `<input name="modelo" value="${esc(c.modelo || '')}" autocomplete="off" placeholder="p. ej. gemini-2.5-flash">`)}
+      ${campo('Dirección base (solo si es «otra»)', `<input name="url" value="${esc(c.url || '')}" autocomplete="off" placeholder="https://api.openai.com/v1">`)}
+      <h2>IA de respaldo (opcional)</h2>
+      <p class="det" style="margin:-4px 0 8px">Si la principal falla (servidor saturado, límite gratuito), la app prueba sola con esta. Lo mejor es que sea de otro proveedor.</p>
+      <label class="campo"><span>¿Cuál?</span><select name="r_preset">${ops(r.preset || (IA.valida(r) ? IA.presetDe(r) : ''), 'Sin respaldo')}</select></label>
+      ${campo('Clave del respaldo', `<input name="r_clave" type="password" value="${esc(r.clave || '')}" autocomplete="off">`)}
+      ${campo('Modelo del respaldo (vacío = el habitual)', `<input name="r_modelo" value="${esc(r.modelo || '')}" autocomplete="off">`)}
+      ${campo('Dirección base del respaldo (solo si es «otra»)', `<input name="r_url" value="${esc(r.url || '')}" autocomplete="off">`)}
+      <label class="fila" style="min-height:44px"><input type="checkbox" onchange="for (const n of ['clave', 'r_clave']) this.form[n].type = this.checked ? 'text' : 'password'"> Ver las claves (para comprobar que están bien pegadas)</label>
+      <details style="margin-bottom:10px"><summary style="min-height:44px;display:flex;align-items:center;font-weight:700">Dónde conseguir cada clave</summary>${Object.values(IA.PRESETS).map(v => `<p class="det"><b>${esc(v.nombre)}:</b> ${esc(v.ayuda)}</p>`).join('')}<p class="det">Los límites y condiciones gratuitos los fija cada proveedor y pueden cambiar.</p></details>
+      <p class="det">Las claves se guardan solo en este móvil, aparte de tus datos: no van en las copias de seguridad.</p>
       <div class="pila"><button class="btn main" type="submit" value="probar">Probar y guardar</button>${IA.configurada() ? '<button class="btn peligro" type="submit" value="desconectar-ia">Desconectar la IA</button>' : ''}</div>
       ${IA.pieIA()}`, (f, acc) => {
       if (acc === 'desconectar-ia') { IA.guardarConfig(null); avisar('IA desconectada.'); S.guardar(); return true; }
-      const nueva = { proveedor: f.proveedor, clave: (f.clave || '').trim(), modelo: (f.modelo || '').trim() || (f.proveedor === 'gemini' ? IA.PROVEEDORES.gemini.modelo : ''), url: (f.url || '').trim() };
-      if (!nueva.clave) { avisar('Falta la clave.'); return false; }
-      if (nueva.proveedor === 'openai' && (!nueva.url || !nueva.modelo)) { avisar('Para otra IA hacen falta la dirección y el modelo.'); return false; }
-      IA.guardarConfig(nueva); avisar('Probando la conexión…', 30000);                      // se guarda SIEMPRE: si la prueba falla (límite, red…) no hay que volver a pegar la clave
-      IA.preguntar('Responde solo con la palabra: ok').then(() => { avisar('Conectada y funcionando.'); S.guardar(); })
-        .catch(e => { avisar('Guardada, pero la prueba ha fallado: ' + e.message, 9000); S.guardar(); });
+      const prin = IA.desdeFormulario(f.preset, f.clave, f.modelo, f.url);
+      if (!prin.clave) { avisar('Falta la clave de la IA principal.'); return false; }
+      if (!IA.valida(prin)) { avisar('Para esa IA hacen falta la dirección y el modelo.'); return false; }
+      let resp = null;
+      if (f.r_preset) {
+        resp = IA.desdeFormulario(f.r_preset, f.r_clave, f.r_modelo, f.r_url);
+        if (!resp.clave) { avisar('Falta la clave del respaldo (o elige «Sin respaldo»).'); return false; }
+        if (!IA.valida(resp)) { avisar('Para la IA de respaldo hacen falta la dirección y el modelo.'); return false; }
+      }
+      IA.guardarConfig({ ...prin, respaldo: resp }); avisar('Probando la conexión…', 40000);       // se guarda SIEMPRE: si la prueba falla (límite, red…) no hay que volver a pegar la clave
+      const prueba = c2 => IA.preguntarA(c2, 'Responde solo con la palabra: ok');
+      Promise.allSettled([prueba(prin), resp ? prueba(resp) : Promise.resolve(null)]).then(([a, b]) => {
+        const txt = (cfg, x, extra = '') => `${IA.etiqueta(cfg)}${extra}: ${x.status === 'fulfilled' ? 'conectada' : 'falla (' + x.reason.message + ')'}`;
+        avisar([txt(prin, a), resp ? txt(resp, b, ' (respaldo)') : ''].filter(Boolean).join(' · ') + '. Guardado.', 11000); S.guardar();
+      });
       return true;
     });
     return false;

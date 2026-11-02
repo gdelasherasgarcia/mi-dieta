@@ -76,7 +76,8 @@ function formularioBot(p) {
       </div>
     </details>
     <label class="campo"><span>Para qué sirve (ficha)</span><textarea name="para" rows="3" autocomplete="off" placeholder="p. ej. antiinflamatorio; 1 comprimido cada 8 h con comida…" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px">${v(p.para)}</textarea></label>
-    <button type="button" class="btn grande" data-act="bot-ia" style="margin:-4px 0 12px">🤖 ${IA.configurada() ? 'Rellenar con la IA' : 'Preguntar a una IA (copia la pregunta)'}</button>
+    <div class="pila" style="margin:-4px 0 12px"><button type="button" class="btn" data-act="bot-google">🔎 Buscar en Google (se abre fuera de la app)</button>
+    <button type="button" class="btn" data-act="bot-ia">🤖 ${IA.configurada() ? 'Rellenar con la IA' : 'Preguntar a una IA (copia la pregunta)'}</button></div>
     ${IA.configurada() ? IA.pieIA() : '<p class="det" style="margin:-6px 0 10px">Pega la pregunta en tu IA y copia aquí su respuesta. Es orientativo: manda el prospecto y lo que te diga el médico o la farmacia.</p>'}
     ${campo('Nota', `<input name="nota" value="${v(p.nota)}" autocomplete="off">`)}
     <div class="fila" style="margin-top:6px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
@@ -212,6 +213,11 @@ export function acciones(act, el) {
   const d = S.datos();
   if (act === 'filtro') { filtro = el.dataset.k; return true; }
   if (act === 'anadir' && filtro === 'botiquin') act = 'bot-nuevo';
+  if (act === 'bot-google') {                                              // último recurso: abre Google con la pregunta; se lee allí y se copia a la ficha
+    const f = el.closest('form'), nombre = ((f && f.querySelector('[name="nombre"]')) || {}).value?.trim();
+    if (!nombre) { avisar('Escribe primero el nombre del medicamento.'); return false; }
+    window.open('https://www.google.com/search?q=' + encodeURIComponent('para qué sirve ' + nombre + ' medicamento'), '_blank', 'noopener'); return false;
+  }
   if (act === 'bot-ia') {
     const f = el.closest('form'), nombre = ((f && f.querySelector('[name="nombre"]')) || {}).value?.trim();
     if (!nombre) { avisar('Escribe primero el nombre del medicamento.'); return false; }

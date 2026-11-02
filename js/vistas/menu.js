@@ -92,6 +92,31 @@ Responde SOLO con un bloque JSON, sin texto antes ni después, con esta forma:
 
 const parsear = t => { const m = String(t).replace(/```(?:json)?/gi, '').match(/\{[\s\S]*\}/); if (!m) throw new Error('No encuentro un bloque JSON en la respuesta.'); return JSON.parse(m[0]); };
 
+// Ventana para fijar/cambiar la comida o la cena de un día (la usan Menú y, para apuntar lo real, Hoy). `despues` se llama con lo guardado.
+export function abrirCambiar(f, k, despues) {
+    const d = S.datos(), cur = plan(f)[k] || {}, marc = new Set(cur.ids || []);
+    const stock = d.nevera.slice().sort((a, b) => (a.ubicacion === 'congelador' ? 0 : 1) - (b.ubicacion === 'congelador' ? 0 : 1) || a.nombre.localeCompare(b.nombre, 'es'));
+    const rell = lista(d.ajustes.tortilla_rellenos);
+    abrirHoja(`<h1>${k === 'comida' ? 'Comida' : 'Cena'} · ${esc(diaSemana(f))} ${esc(fechaCorta(f))}</h1>
+      ${k === 'cena' ? `<label class="campo"><span>Tortilla de…</span><select name="relleno"><option value="">— otra cosa —</option>${rell.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>` : ''}
+      ${campo(despues ? '¿Qué has comido (o vas a comer)?' : '¿Qué vas a comer?', `<input name="texto" value="${esc(cur.texto || '')}" autocomplete="off" placeholder="${k === 'comida' ? 'p. ej. contramuslo con ensalada' : 'o deja la tortilla de arriba'}">`)}
+      <label class="fila" style="min-height:44px"><input type="checkbox" name="fuera" value="1" ${cur.fuera ? 'checked' : ''} style="width:24px;height:24px"> Como fuera de casa</label>
+      <p class="det" style="margin:4px 0">Lo de casa que vas a usar (si es del congelador, te aviso el día antes):</p>
+      <div class="card" style="max-height:30vh;overflow:auto">${stock.map(p => `<label class="fila" style="min-height:44px"><input type="checkbox" name="i_${esc(p.id)}" value="1" ${marc.has(p.id) ? 'checked' : ''} style="width:24px;height:24px"> <span>${esc(p.nombre.slice(0, 48))} <span class="det">(${esc(p.ubicacion)}, ${esc(p.cantidad)} ${esc(p.unidad)})</span></span></label>`).join('')}</div>
+      <div class="fila" style="margin-top:10px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
+      ${plan(f)[k] ? '<button class="btn grande" style="margin-top:10px" type="submit" value="quitar">Quitar lo planeado</button>' : ''}`, (g, acc) => {
+      if (acc === 'quitar') { delete plan(f)[k]; S.guardar(); return true; }
+      const ids = d.nevera.filter(p => g['i_' + p.id] === '1').map(p => p.id);
+      let texto = (g.texto || '').trim();
+      if (!texto && g.relleno) texto = `Tortilla de ${g.relleno.toLowerCase()} con ${(d.ajustes.tortilla_siempre || 'tomates cherry').toLowerCase()}`;
+      if (!texto && g.fuera === '1') texto = 'Fuera de casa';
+      if (!texto && !ids.length) { avisar('Apunta qué vas a comer.'); return false; }
+      plan(f)[k] = { texto, ids, fuera: g.fuera === '1' }; S.guardar();
+      if (despues) { const hecho = plan(f)[k]; setTimeout(() => despues(hecho), 0); }
+      return true;
+    });
+}
+
 export function acciones(act, el) {
   const d = S.datos();
   if (act === 'menu-prompt') {
@@ -115,28 +140,7 @@ export function acciones(act, el) {
     });
     return true;
   }
-  if (act === 'menu-cambiar') {
-    const f = el.dataset.f, k = el.dataset.k, cur = plan(f)[k] || {}, marc = new Set(cur.ids || []);
-    const stock = d.nevera.slice().sort((a, b) => (a.ubicacion === 'congelador' ? 0 : 1) - (b.ubicacion === 'congelador' ? 0 : 1) || a.nombre.localeCompare(b.nombre, 'es'));
-    const rell = lista(d.ajustes.tortilla_rellenos);
-    abrirHoja(`<h1>${k === 'comida' ? 'Comida' : 'Cena'} · ${esc(diaSemana(f))} ${esc(fechaCorta(f))}</h1>
-      ${k === 'cena' ? `<label class="campo"><span>Tortilla de…</span><select name="relleno"><option value="">— otra cosa —</option>${rell.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>` : ''}
-      ${campo('¿Qué vas a comer?', `<input name="texto" value="${esc(cur.texto || '')}" autocomplete="off" placeholder="${k === 'comida' ? 'p. ej. contramuslo con ensalada' : 'o deja la tortilla de arriba'}">`)}
-      <label class="fila" style="min-height:44px"><input type="checkbox" name="fuera" value="1" ${cur.fuera ? 'checked' : ''} style="width:24px;height:24px"> Como fuera de casa</label>
-      <p class="det" style="margin:4px 0">Lo de casa que vas a usar (si es del congelador, te aviso el día antes):</p>
-      <div class="card" style="max-height:30vh;overflow:auto">${stock.map(p => `<label class="fila" style="min-height:44px"><input type="checkbox" name="i_${esc(p.id)}" value="1" ${marc.has(p.id) ? 'checked' : ''} style="width:24px;height:24px"> <span>${esc(p.nombre.slice(0, 48))} <span class="det">(${esc(p.ubicacion)}, ${esc(p.cantidad)} ${esc(p.unidad)})</span></span></label>`).join('')}</div>
-      <div class="fila" style="margin-top:10px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
-      ${plan(f)[k] ? '<button class="btn grande" style="margin-top:10px" type="submit" value="quitar">Quitar lo planeado</button>' : ''}`, (g, acc) => {
-      if (acc === 'quitar') { delete plan(f)[k]; S.guardar(); return true; }
-      const ids = d.nevera.filter(p => g['i_' + p.id] === '1').map(p => p.id);
-      let texto = (g.texto || '').trim();
-      if (!texto && g.relleno) texto = `Tortilla de ${g.relleno.toLowerCase()} con ${(d.ajustes.tortilla_siempre || 'tomates cherry').toLowerCase()}`;
-      if (!texto && g.fuera === '1') texto = 'Fuera de casa';
-      if (!texto && !ids.length) { avisar('Apunta qué vas a comer.'); return false; }
-      plan(f)[k] = { texto, ids, fuera: g.fuera === '1' }; S.guardar(); return true;
-    });
-    return true;
-  }
+  if (act === 'menu-cambiar') { abrirCambiar(el.dataset.f, el.dataset.k); return true; }
   if (act === 'menu-proponer') {
     const dias = Array.from({ length: DIAS }, (_, i) => sumaDias(hoy(), i)), prop = proponer(dias);
     const filas = prop.map(p => {
