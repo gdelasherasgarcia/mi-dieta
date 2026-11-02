@@ -108,6 +108,7 @@ h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: 
 #aviso .btn.mini { min-height: 36px; min-width: 0; margin-left: 8px; padding: 4px 12px; background: var(--bg); color: var(--ink); }
 .vaso { width: 42px; height: 52px; }
 .ayuda-btn { position: relative; }
+.ayuda-caja { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 12px; padding: 10px 12px; margin: 8px 0 14px; font-size: .92rem; line-height: 1.4; }
 .ayuda-btn::after { content: ''; position: absolute; inset: -8px; }
 #tabs button .ico svg { display: block; }
 #tabs button .ico { height: 26px; }
@@ -115,3 +116,8 @@ h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: 
 /* Pantallas secundarias (Recetario, Avisos, Medicinas, Catálogo): se cierran con la misma ✕ redonda que las ventanas */
 .cab-cerrar { display: flex; justify-content: flex-end; margin: -6px 0 4px; }
 .cab-cerrar .cerrar-hoja { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: inherit; font-size: 1.05rem; cursor: pointer; }
+
+/* Homogeneidad (02-11-2026): casillas del color de la app y sin estrecharse, y botones «+ Añadir» de cabecera siempre en una línea */
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); flex: 0 0 auto; }
+.fila.sep .btn.main { white-space: nowrap; flex: 0 0 auto; }
+.fila.sep > div { min-width: 0; }

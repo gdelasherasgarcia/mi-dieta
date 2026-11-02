@@ -130,7 +130,7 @@ export function render() {
   }).join('');
 
   return `
-    <div class="fila sep"><div><h1>Almacén de comida</h1><p class="sub" style="margin:0">${filtro === 'botiquin' ? activosBot(d).length + ' en el botiquín' : d.nevera.length + ' productos en casa'}</p></div>
+    <div class="fila sep"><div><h1>Almacén</h1><p class="sub" style="margin:0">${filtro === 'botiquin' ? activosBot(d).length + ' en el botiquín' : d.nevera.length + ' productos en casa'}</p></div>
       <button type="button" class="btn main" data-act="anadir">+ Añadir</button></div>
     <div style="height:12px"></div>
     <div class="filtros" role="group" aria-label="Filtrar por sitio">${filtros}</div>
@@ -145,7 +145,7 @@ function formulario(p) {
   const opts = (lista, sel) => lista.map(x => { const [k, t] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t)}</option>`; }).join('');
   const masDatos = p.marca || p.envase || p.sal100 !== null || p.abierto || nuevo === false;
   return `
-    <h1>${nuevo ? 'Añadir producto' : 'Editar'}</h1>
+    <h1>${nuevo ? 'Añadir producto' : 'Editar producto del almacén'}</h1>
     ${campo('Producto', `<input name="nombre" required value="${v(p.nombre)}" autocomplete="off" list="lista-catalogo">`)}
     ${campo('Código de barras (opcional)', `<input name="ean" inputmode="numeric" value="${v(p.ean)}" placeholder="si está en el catálogo, rellena el producto" autocomplete="off">`)}
     ${botonFoto()}

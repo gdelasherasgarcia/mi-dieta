@@ -28,7 +28,7 @@ export function render() {
 
     <h2>Inteligencia artificial</h2>
     <div class="card">
-      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.etiqueta(IA.config()))}</b>${[IA.config().respaldo, IA.config().respaldo2].filter(IA.valida).map(x => ` · respaldo: <b>${esc(IA.etiqueta(x))}</b>`).join('')}. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
+      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.etiqueta(IA.config()))}</b>${[IA.config().respaldo, IA.config().respaldo2].filter(IA.valida).map(x => ` · respaldo: <b>${esc(IA.etiqueta(x))}</b>`).join('')}. Se usa para rellenar fichas de medicamentos y para proponer menús y recetas.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
       <button type="button" class="btn grande" data-act="ia-conectar">🤖 ${IA.configurada() ? 'Cambiar o desconectar la IA' : 'Conectar una IA'}</button>
     </div>
 

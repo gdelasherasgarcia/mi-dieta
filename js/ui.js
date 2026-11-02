@@ -1,6 +1,7 @@
 // Piezas de interfaz comunes: hoja inferior (formularios) y avisos breves.
 import { esc } from './util.js';
 import * as S from './store.js';
+import { ayudaHoja } from './ayuda_hojas.js';
 
 const hoja = () => document.getElementById('hoja');
 const aviso = () => document.getElementById('aviso');
@@ -11,6 +12,16 @@ export function abrirHoja(html, alEnviar) {
   h.innerHTML = `<div class="panel" role="dialog" aria-modal="true"><button type="button" class="cerrar-hoja" data-cerrar aria-label="Cerrar">✕</button><form novalidate>${html}</form></div>`;
   h.hidden = false;
   const form = h.querySelector('form');
+  const h1 = form.querySelector('h1'), ayuda = h1 && ayudaHoja(h1.textContent);                       // botón «?» con una ayuda corta de esta ventana
+  if (ayuda) {
+    h1.insertAdjacentHTML('beforeend', ' <button type="button" class="ayuda-btn" data-ayuda-hoja aria-label="Ayuda de esta ventana">?</button>');
+    form.addEventListener('click', ev => {
+      if (!ev.target.closest('[data-ayuda-hoja]')) return; ev.preventDefault();
+      const ya = form.querySelector('.ayuda-caja'); if (ya) { ya.remove(); return; }
+      const sub = h1.nextElementSibling && h1.nextElementSibling.classList.contains('sub') ? h1.nextElementSibling : h1;
+      sub.insertAdjacentHTML('afterend', `<div class="ayuda-caja" role="note" style="white-space:pre-line">${esc(ayuda)}</div>`);
+    });
+  }
   form.addEventListener('submit', ev => {
     ev.preventDefault();
     const accion = ev.submitter?.value || 'guardar';
@@ -23,7 +34,7 @@ export function abrirHoja(html, alEnviar) {
     h.addEventListener('click', ev => { if (ev.target === h || ev.target.closest('[data-cerrar]')) cerrarHoja(); });
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !h.hidden) cerrarHoja(); });
   }
-  const primero = form.querySelector('input:not([type=hidden]), select, textarea');
+  const primero = form.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea');       // una casilla no se enfoca sola: se vería con un marco raro
   if (primero) primero.focus({ preventScroll: true });
 }
 export function cerrarHoja() { const h = hoja(); h.hidden = true; h.innerHTML = ''; }

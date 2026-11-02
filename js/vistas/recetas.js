@@ -14,7 +14,7 @@ export function render() {
   const rs = S.datos().recetas, n = e => rs.filter(r => r.estado === e).length;
   const lista = rs.filter(r => filtro === 'todas' || r.estado === filtro).sort((a, b) => a.prot.localeCompare(b.prot) || a.nombre.localeCompare(b.nombre, 'es'));
   const filtros = [...(n('pendiente') || filtro === 'pendiente' ? [['pendiente', `Pendientes (${n('pendiente')})`]] : []), ['aceptada', `Aceptadas (${n('aceptada')})`], ['descartada', `Descartadas (${n('descartada')})`], ['todas', 'Todas']].map(([k, t]) => `<button type="button" class="filtro" data-act="rec-filtro" data-k="${k}" aria-pressed="${filtro === k}">${t}</button>`).join('');
-  return `<h1>Recetario</h1><p class="sub">Platos de comida con tus tres carnes. Descarta los que no te gusten.</p>
+  return `<h1>Recetario</h1><p class="sub">Platos de comida para el menú. Descarta los que no te gusten; las nuevas de la IA esperan en «Pendientes» hasta que las aceptes.</p>
     ${IA.configurada() ? '<button type="button" class="btn grande" data-act="rec-ia" style="margin-bottom:10px">⚡ Pedir recetas nuevas a la IA</button>' : ''}
     ${(S.datos().rechazadas_ia || []).length ? `<button type="button" class="btn grande" data-act="rec-rech" style="margin-bottom:10px">Ver las ${(S.datos().rechazadas_ia || []).length} que descartó el código</button>` : ''}
     <div class="filtros">${filtros}</div>
