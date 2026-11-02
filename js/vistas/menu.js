@@ -44,7 +44,7 @@ export function render() {
     <h2>Con una IA</h2>
     <div class="card">
       <p style="margin-top:0">La IA no ve la app: le das un texto que la pone al día de lo que tienes y lo que buscas, y luego pegas aquí lo que conteste. Antes de aplicar nada, lo reviso con las reglas de tu dieta.</p>
-      ${IA.configurada() ? `<button type="button" class="btn main grande" data-act="menu-ia">⚡ Pedir menú a ${esc(IA.nombreIA())} (eliges las opciones)</button>${IA.pieIA()}<p class="det" style="margin:12px 0 4px">O, a mano:</p>` : ''}
+      ${IA.configurada() ? `<button type="button" class="btn main grande" data-act="menu-ia">⚡ Pedir menú a la IA (eliges las opciones)</button>${IA.pieIA()}<p class="det" style="margin:12px 0 4px">O, a mano:</p>` : ''}
       <button type="button" class="btn grande" data-act="menu-prompt">1 · Copiar el texto para la IA</button>
       <button type="button" class="btn grande" style="margin-top:10px" data-act="menu-pegar">2 · Pegar la respuesta de la IA</button>
     </div>
@@ -157,7 +157,7 @@ function abrirFormIA() {
       ${campo('Otros excluidos (separados por comas)', `<input name="excl_txt" value="${esc(g0.excl_txt || '')}" autocomplete="off" placeholder="p. ej. coliflor, lentejas">`)}</div>
     <h2>Mis reglas propias</h2><div class="card">${campo('Una por línea (se guardan)', `<textarea name="reglas" rows="4" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px" placeholder="p. ej. aceite de oliva en vaporizador&#10;patata pequeña al microondas">${esc(g0.reglas || '')}</textarea>`)}
       ${campo('Algo más (solo esta vez)', `<input name="notas" autocomplete="off" placeholder="p. ej. algo ligero, viene mi hija">`)}</div>
-    <div class="fila" style="margin-top:10px">${IA.configurada() ? `<button class="btn main grow" type="submit" value="pedir">⚡ Pedir a ${esc(IA.nombreIA())}</button>` : ''}<button class="btn grow" type="submit" value="copiar">Solo copiar el texto</button></div>${IA.configurada() ? IA.pieIA() : ''}`, (g, acc) => {
+    <div class="fila" style="margin-top:10px">${IA.configurada() ? `<button class="btn main grow" type="submit" value="pedir">⚡ Pedir a la IA</button>` : ''}<button class="btn grow" type="submit" value="copiar">Solo copiar el texto</button></div>${IA.configurada() ? IA.pieIA() : ''}`, (g, acc) => {
     const sel = dias.filter((f, i) => g['d' + i] === '1'), comidas = ['comida', 'cena'].filter(k => g['k_' + k] === '1');
     if (!sel.length || !comidas.length) { avisar('Marca al menos un día y un plato.'); return false; }
     const prot = PROT.filter(([k]) => g['p_' + k] === '1').map(x => x[0]), aparatos = APARATOS.filter(([k]) => g['a_' + k] === '1').map(x => x[0]);
@@ -169,7 +169,7 @@ function abrirFormIA() {
     const op = armarOp(d.ajustes.ia_form, sel, (g.notas || '').trim());
     if (acc === 'copiar') { setTimeout(() => abrirHoja(`<h1>Texto para la IA</h1><p class="sub">Cópialo entero (mantén pulsado → seleccionar todo → copiar) y pégalo en la IA.</p><textarea readonly rows="16" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.75rem">${esc(promptIA(op))}</textarea>`, () => true), 0); return true; }
     setTimeout(() => {
-      avisar('Pidiendo los platos a ' + IA.nombreIA() + '… puede tardar unos segundos.', 70000);
+      avisar('Pidiendo los platos a la IA… puede tardar unos segundos.', 70000);
       IA.preguntar(promptIA(op), { json: true }).then(t => { const r = parsear(t); if (!Array.isArray(r.menu) || !r.menu.length) throw new Error('La respuesta no trae «menu».'); revisar(r); })
         .catch(e => avisar('No se pudo: ' + e.message, 7000));
     }, 0);

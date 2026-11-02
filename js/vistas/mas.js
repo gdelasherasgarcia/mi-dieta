@@ -28,7 +28,7 @@ export function render() {
 
     <h2>Inteligencia artificial</h2>
     <div class="card">
-      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.etiqueta(IA.config()))}</b>${IA.valida(IA.config().respaldo) ? ` · respaldo: <b>${esc(IA.etiqueta(IA.config().respaldo))}</b>` : ''}. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
+      <p style="margin-top:0">${IA.configurada() ? `Conectada: <b>${esc(IA.etiqueta(IA.config()))}</b>${[IA.config().respaldo, IA.config().respaldo2].filter(IA.valida).map(x => ` · respaldo: <b>${esc(IA.etiqueta(x))}</b>`).join('')}. Se usa para rellenar fichas de medicamentos y proponer menús.` : 'Sin conectar. Si conectas una IA, la app puede rellenar fichas de medicamentos y proponer menús sola. Sin ella, sigues copiando y pegando a mano.'}</p>
       <button type="button" class="btn grande" data-act="ia-conectar">🤖 ${IA.configurada() ? 'Cambiar o desconectar la IA' : 'Conectar una IA'}</button>
     </div>
 
@@ -56,7 +56,7 @@ export function render() {
 export function acciones(act, el) {
   const d = S.datos();
   if (act === 'ia-conectar') {
-    const c = IA.config() || {}, r = c.respaldo || {}, ops = (sel, vacio) => (vacio ? `<option value="">${vacio}</option>` : '') + Object.entries(IA.PRESETS).map(([k, v]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
+    const c = IA.config() || {}, r = c.respaldo || {}, r2 = c.respaldo2 || {}, ops = (sel, vacio) => (vacio ? `<option value="">${vacio}</option>` : '') + Object.entries(IA.PRESETS).map(([k, v]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
     abrirHoja(`<h1>Conectar una IA</h1>
       <p class="det" style="white-space:pre-line">⚠ ${esc(IA.AVISO_DATOS)}</p>
       <h2>IA principal</h2>
@@ -70,7 +70,13 @@ export function acciones(act, el) {
       ${campo('Clave del respaldo', `<input name="r_clave" type="password" value="${esc(r.clave || '')}" autocomplete="off">`)}
       ${campo('Modelo del respaldo (vacío = el habitual)', `<input name="r_modelo" value="${esc(r.modelo || '')}" autocomplete="off">`)}
       ${campo('Dirección base del respaldo (solo si es «otra»)', `<input name="r_url" value="${esc(r.url || '')}" autocomplete="off">`)}
-      <label class="fila" style="min-height:44px"><input type="checkbox" onchange="for (const n of ['clave', 'r_clave']) this.form[n].type = this.checked ? 'text' : 'password'"> Ver las claves (para comprobar que están bien pegadas)</label>
+      <h2>Segunda IA de respaldo (opcional)</h2>
+      <p class="det" style="margin:-4px 0 8px">Si fallan la principal y la primera de respaldo, la app prueba con esta.</p>
+      <label class="campo"><span>¿Cuál?</span><select name="r2_preset">${ops(r2.preset || (IA.valida(r2) ? IA.presetDe(r2) : ''), 'Sin segundo respaldo')}</select></label>
+      ${campo('Clave del segundo respaldo', `<input name="r2_clave" type="password" value="${esc(r2.clave || '')}" autocomplete="off">`)}
+      ${campo('Modelo del segundo respaldo (vacío = el habitual)', `<input name="r2_modelo" value="${esc(r2.modelo || '')}" autocomplete="off">`)}
+      ${campo('Dirección base del segundo respaldo (solo si es «otra»)', `<input name="r2_url" value="${esc(r2.url || '')}" autocomplete="off">`)}
+      <label class="fila" style="min-height:44px"><input type="checkbox" onchange="for (const n of ['clave', 'r_clave', 'r2_clave']) this.form[n].type = this.checked ? 'text' : 'password'"> Ver las claves (para comprobar que están bien pegadas)</label>
       <details style="margin-bottom:10px"><summary style="min-height:44px;display:flex;align-items:center;font-weight:700">Dónde conseguir cada clave</summary>${Object.values(IA.PRESETS).map(v => `<p class="det"><b>${esc(v.nombre)}:</b> ${esc(v.ayuda)}</p>`).join('')}<p class="det">Los límites y condiciones gratuitos los fija cada proveedor y pueden cambiar.</p></details>
       <p class="det">Las claves se guardan solo en este móvil, aparte de tus datos: no van en las copias de seguridad.</p>
       <div class="pila"><button class="btn main" type="submit" value="probar">Probar y guardar</button>${IA.configurada() ? '<button class="btn peligro" type="submit" value="desconectar-ia">Desconectar la IA</button>' : ''}</div>
@@ -85,11 +91,17 @@ export function acciones(act, el) {
         if (!resp.clave) { avisar('Falta la clave del respaldo (o elige «Sin respaldo»).'); return false; }
         if (!IA.valida(resp)) { avisar('Para la IA de respaldo hacen falta la dirección y el modelo.'); return false; }
       }
-      IA.guardarConfig({ ...prin, respaldo: resp }); avisar('Probando la conexión…', 40000);       // se guarda SIEMPRE: si la prueba falla (límite, red…) no hay que volver a pegar la clave
+      let resp2 = null;
+      if (f.r2_preset) {
+        resp2 = IA.desdeFormulario(f.r2_preset, f.r2_clave, f.r2_modelo, f.r2_url);
+        if (!resp2.clave) { avisar('Falta la clave del segundo respaldo (o elige «Sin segundo respaldo»).'); return false; }
+        if (!IA.valida(resp2)) { avisar('Para el segundo respaldo hacen falta la dirección y el modelo.'); return false; }
+      }
+      IA.guardarConfig({ ...prin, respaldo: resp, respaldo2: resp2 }); avisar('Probando la conexión…', 40000);       // se guarda SIEMPRE: si la prueba falla (límite, red…) no hay que volver a pegar la clave
       const prueba = c2 => IA.preguntarA(c2, 'Responde solo con la palabra: ok');
-      Promise.allSettled([prueba(prin), resp ? prueba(resp) : Promise.resolve(null)]).then(([a, b]) => {
+      Promise.allSettled([prueba(prin), resp ? prueba(resp) : Promise.resolve(null), resp2 ? prueba(resp2) : Promise.resolve(null)]).then(([a, b, b2]) => {
         const txt = (cfg, x, extra = '') => `${IA.etiqueta(cfg)}${extra}: ${x.status === 'fulfilled' ? 'conectada' : 'falla (' + x.reason.message + ')'}`;
-        avisar([txt(prin, a), resp ? txt(resp, b, ' (respaldo)') : ''].filter(Boolean).join(' · ') + '. Guardado.', 11000); S.guardar();
+        avisar([txt(prin, a), resp ? txt(resp, b, ' (respaldo)') : '', resp2 ? txt(resp2, b2, ' (2.º respaldo)') : ''].filter(Boolean).join(' · ') + '. Guardado.', 11000); S.guardar();
       });
       return true;
     });

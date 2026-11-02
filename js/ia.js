@@ -84,7 +84,7 @@ async function descubrirModeloOpenAI(c) {
   const tam = n => Number((n.match(/(\d+)b/i) || [])[1]) || 0;
   return lista.sort((a, b) => tam(b) - tam(a))[0] || null;
 }
-function recordarModelo(c, m) { const g = config(); if (!g) return; if (g.clave === c.clave) g.modelo = m; else if (g.respaldo && g.respaldo.clave === c.clave) g.respaldo.modelo = m; guardarConfig(g); }
+function recordarModelo(c, m) { const g = config(); if (!g) return; const x = [g, g.respaldo, g.respaldo2].find(y => y && y.clave === c.clave); if (x) { x.modelo = m; guardarConfig(g); } }
 // Una IA concreta: ante un error del servidor (5xx) reintenta dos veces antes de rendirse.
 export async function preguntarA(c, prompt, { json = false, reintentos = 2, _buscado = false } = {}) {
   for (let intento = 0; ; intento++) {
@@ -97,14 +97,17 @@ export async function preguntarA(c, prompt, { json = false, reintentos = 2, _bus
       if (!e.servidor || intento >= reintentos) throw e; await dormir(intento === 0 ? 2500 : 6000); }
   }
 }
-// Pregunta a la IA principal; si falla por algo que otra IA puede salvar, prueba la de respaldo. Con {json:true} pide solo JSON.
+// Pregunta a la IA principal; si falla por algo que otra IA puede salvar, prueba la primera de respaldo y después la segunda. Con {json:true} pide solo JSON.
 export async function preguntar(prompt, { json = false } = {}) {
   const c = config(); if (!valida(c)) throw new Error('No hay ninguna IA conectada. Conéctala en «Más».');
-  try { const t = await preguntarA(c, prompt, { json, reintentos: valida(c.respaldo) ? 0 : 2 }); _usada = c; return t; }          // con respaldo no se pierde tiempo reintentando
-  catch (e) {
-    if (e.status === 404) e.recuperable = true;                                           // modelo o dirección que no existen: que lo intente la de respaldo
-    if (!e.recuperable || !valida(c.respaldo)) { e.message = `${etiqueta(c)} (modelo «${c.modelo}»): ${e.message}`; throw e; }
-    try { const t = await preguntarA(c.respaldo, prompt, { json }); _usada = c.respaldo; return t; }
-    catch (e2) { throw new Error(`${etiqueta(c)} (modelo «${c.modelo}»): ${e.message}\n${etiqueta(c.respaldo)} (respaldo, modelo «${c.respaldo.modelo}»): ${e2.message}`); }
+  const cadena = [c, c.respaldo, c.respaldo2].filter(valida), fallos = [];
+  for (let i = 0; i < cadena.length; i++) {
+    const x = cadena[i], ultima = i === cadena.length - 1;
+    try { const t = await preguntarA(x, prompt, { json, reintentos: ultima ? 2 : 0 }); _usada = x; return t; }          // con alguna IA de relevo detrás no se pierde tiempo reintentando
+    catch (e) {
+      if (e.status === 404) e.recuperable = true;                                           // modelo o dirección que no existen: que lo intente la siguiente
+      fallos.push(`${etiqueta(x)}${i ? ' (respaldo' + (cadena.length > 2 ? ' ' + i : '') + ')' : ''} (modelo «${x.modelo}»): ${e.message}`);
+      if (!e.recuperable || ultima) throw cadena.length === 1 ? Object.assign(e, { message: fallos[0] }) : new Error(fallos.join('\n'));
+    }
   }
 }
