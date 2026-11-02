@@ -1,7 +1,8 @@
 // Pantalla «Menú»: los próximos 6 días (desayuno, media mañana, comida, cena), con «Cambiar» por partes,
 // y el puente con una IA: un prompt que la pone al día y una forma de pegar su respuesta y aplicarla tras revisarla.
 import * as S from '../store.js';
-import { esc, hoy, desdeIso, iso, diaSemana, fechaCorta } from '../util.js';
+import { esc, hoy, desdeIso, iso, diaSemana, fechaCorta, diasHasta } from '../util.js';
+import { caducidadEfectiva } from '../producto.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 import { proponer, faltantes } from '../generador.js';
 import * as IA from '../ia.js';
@@ -69,10 +70,12 @@ function promptIA(op = null) {
     F.reglas && `- Mis reglas propias (respétalas):\n${String(F.reglas).split('\n').map(x => '   · ' + x.trim()).filter(x => x.length > 5).join('\n')}`,
     `- Hago la compra ${aj.compra_dias === 1 ? 'cada día' : 'cada ' + aj.compra_dias + ' días'}${aj.supermercado ? ', en ' + aj.supermercado : ''}.`,
   ].filter(Boolean).join('\n');
+  const pronto = d.nevera.filter(p => Number(p.cantidad) > 0 && !(op.reserva || []).includes(corto(p.nombre))).map(p => ({ nombre: corto(p.nombre), n: diasHasta(caducidadEfectiva(p)) })).filter(x => x.n !== null && x.n >= 0 && x.n <= op.diasCaduca).sort((a, b) => a.n - b.n);
   const extra = `PETICIÓN DE ESTA VEZ (junto con mis límites fijos, es todo lo que debes respetar; no añadas restricciones por tu cuenta)
 - Fechas y platos: ${que} de las fechas indicadas abajo. Lo que no te pido, no lo pongas en el JSON.
-${op.salud.length ? `- CONDICIONES DE SALUD que cumples a la vez (si chocan, manda la más estricta):\n${op.salud.map(x => '   · ' + x).join('\n')}\n` : ''}${op.min ? `- Tiempo máximo: ${op.min} minutos de preparación por plato.\n` : ''}${op.aparatos.length ? `- Aparatos que usaré esta vez (solo estos): ${op.aparatos.join(', ')}.\n` : ''}${op.prot.length ? `- Proteínas: solo puedes usar ${op.prot.join(', ')}. NO uses ${op.noProt.join(', ')}.\n` : ''}${op.gustan.length ? `- Me gustan y quiero que salgan si encajan: ${op.gustan.join(', ')}.\n` : ''}${op.excl.length ? `- NO USES NUNCA estos alimentos, ni como acompañamiento: ${op.excl.join(', ')}.\n` : ''}- ${op.caducar ? 'Gasta primero lo que caduca antes.' : 'Lo que caduca no es prioridad esta vez.'}
-- ${op.repetir ? 'Puedes cocinar una vez y repetir el plato en dos días seguidos (lo digo si me conviene).' : 'No repitas platos en estas fechas.'}
+${op.salud.length ? `- CONDICIONES DE SALUD que cumples a la vez (si chocan, manda la más estricta):\n${op.salud.map(x => '   · ' + x).join('\n')}\n` : ''}${op.min ? `- Tiempo máximo: ${op.min} minutos de preparación por plato.\n` : ''}${op.aparatos.length ? `- Aparatos que usaré esta vez (solo estos): ${op.aparatos.join(', ')}.\n` : ''}${op.prot.length ? `- Proteínas: solo puedes usar ${op.prot.join(', ')}. NO uses ${op.noProt.join(', ')}.\n` : ''}${op.gustan.length ? `- Me gustan y quiero que salgan si encajan: ${op.gustan.join(', ')}.\n` : ''}${op.excl.length ? `- NO USES NUNCA estos alimentos, ni como acompañamiento: ${op.excl.join(', ')}.\n` : ''}- ${op.caducar ? (pronto.length ? `PRIORIDAD ALTA: lo que caduca en los próximos ${op.diasCaduca} días. Úsalo en estas fechas, empezando por lo que antes caduca: ${pronto.map(x => `${x.nombre} (en ${x.n} d)`).join('; ')}.` : 'Gasta primero lo que caduca antes.') : 'Lo que caduca no es prioridad esta vez.'}
+${op.envases ? '- Aprovecha los envases: un bote de legumbres (o un paquete que ya abro) da dos raciones. Si un día uso medio bote, el día siguiente usa la otra mitad, y dilo en el texto.\n' : ''}
+${op.usarCasa ? '- Usa primero las proteínas que ya tengo en casa (también las del congelador) antes de proponer otras; si hay una en mi lista de casa y las fechas lo permiten, que salga al menos una vez.\n' : ''}${op.protDistinta ? '- No pongas la misma proteína dos días seguidos (salvo para gastar lo que ya hay).\n' : ''}${op.variar ? '- Varía guarniciones y verduras: no repitas patata, arroz o pasta más de 2 días seguidos ni más de 3 veces en estas fechas.\n' : ''}${op.completar ? '- Si un plato no llega a la proteína pedida (p. ej. legumbres sin carne), complétalo con otro producto de mi lista de casa (huevo duro, yogur de proteína…) y escríbelo en el plato y en "usa".\n' : ''}${op.reserva.length ? `- RESERVA para un día que no pueda cocinar (NO los uses en el menú normal): ${op.reserva.join(', ')}.\n` : ''}- ${op.repetir ? 'Puedes cocinar una vez y repetir el plato en dos días seguidos (lo digo si me conviene).' : 'No repitas platos en estas fechas.'}
 ${op.notas ? `- Además: ${op.notas}\n` : ''}
 `;  return `Eres mi asistente de menús. Hablamos en español, claro y corto. Tu trabajo: proponerme ${que} de las fechas que te indico al final. No eres médico: las reglas de salud son mías y de mi profesional sanitario, tú no las cambias.
 
@@ -97,36 +100,66 @@ Responde SOLO con un bloque JSON, sin texto antes ni después, con esta forma:
 {"menu":[{"fecha":"AAAA-MM-DD","comida":{"texto":"...","usa":["nombre exacto"],"comprar":["..."]},"cena":{"texto":"...","usa":["nombre exacto"],"comprar":["..."]}}],"notas":"una frase con lo más importante"}`;
 }
 
-const APARATOS = [['microondas', 'Microondas'], ['horno', 'Horno'], ['sarten', 'Sartén'], ['freidora', 'Freidora de aire (airfryer)'], ['batidora', 'Batidora de mano'], ['olla', 'Olla o cazuela'], ['crudo', 'Sin cocinar (ensaladas, bocadillos)']];
+export const APARATOS = [['microondas', 'Microondas'], ['horno', 'Horno'], ['sarten', 'Sartén'], ['freidora', 'Freidora de aire (airfryer)'], ['batidora', 'Batidora de mano'], ['olla', 'Olla o cazuela'], ['crudo', 'Sin cocinar (ensaladas, bocadillos)']];
 // Proteínas: lo que se desmarca no puede salir; las palabras son las que vigila la pantalla de revisión.
-const PROT = [['pollo', 'Pollo', ['pollo']], ['conejo', 'Conejo', ['conejo']], ['pavo', 'Pavo', ['pavo']], ['ternera', 'Ternera', ['ternera', 'vacuno', 'chuletón', 'chuleton']],
+export const PROT = [['pollo', 'Pollo', ['pollo']], ['conejo', 'Conejo', ['conejo']], ['pavo', 'Pavo', ['pavo']], ['ternera', 'Ternera', ['ternera', 'vacuno', 'chuletón', 'chuleton']],
   ['cerdo', 'Cerdo', ['cerdo', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha', 'panceta']], ['cordero', 'Cordero', ['cordero']],
   ['pescado_blanco', 'Pescado blanco', ['merluza', 'bacalao', 'lubina', 'dorada', 'pescado blanco']], ['pescado_azul', 'Pescado azul', ['sardina', 'salmón', 'salmon', 'atún', 'atun', 'caballa', 'anchoa', 'boquerón', 'boqueron']],
   ['marisco', 'Marisco', ['gamba', 'marisco', 'mejillón', 'mejillon', 'calamar', 'langostino', 'pulpo', 'almeja']], ['huevos', 'Huevos', ['huevo', 'tortilla']], ['legumbres', 'Legumbres', ['lenteja', 'garbanzo', 'alubia', 'judía', 'judia']]];
 // Condiciones de salud combinables: la regla que se pasa a la IA y las palabras que vigila la revisión. Todo parte de cero: solo cuenta lo que marcas tú.
-const SALUD = [
-  ['sal', 'Sin sal / poca sal', 'sin sal añadida; evita embutidos, conservas, salsas y quesos salados, caldos de pastilla y procesados', ['embutido', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha']],
+export const SALUD = [
+  ['sal', 'Sin sal / poca sal', 'sin sal añadida; evita embutidos, conservas, salsas y quesos salados, caldos de pastilla y procesados; no juntes en un mismo plato dos productos procesados salados (tomate frito, albóndigas, conservas, embutidos, quesos curados…)', ['embutido', 'jamón serrano', 'jamon serrano', 'chorizo', 'salchicha']],
   ['tension', 'Tensión alta', 'cuida la tensión: muy poca sal, nada de procesados salados, más verdura y fruta', []],
   ['colesterol', 'Colesterol alto', 'poca grasa saturada: sin fritos, mantequilla, nata, panceta, bacon ni vísceras; prioriza legumbres, verdura, fibra y aceite de oliva en poca cantidad', ['mantequilla', 'nata', 'panceta', 'bacon', 'frito', 'foie']],
   ['urico', 'Ácido úrico alto', 'evita vísceras, extractos de carne, marisco, pescado azul y alcohol; nada de bebidas azucaradas; más agua y verdura', ['hígado', 'higado', 'mollejas', 'riñón', 'riñon', 'anchoa', 'sardina']],
   ['azucar', 'Azúcar / diabetes', 'sin azúcar añadido ni zumos; hidratos de absorción lenta (legumbres, integrales) y en cantidad moderada', ['azúcar', 'azucar', 'miel', 'zumo']],
   ['alcohol', 'Sin alcohol', 'nada de alcohol, ni siquiera para cocinar', ['vino', 'cerveza', 'alcohol']],
 ];
-const corto = n => String(n).split(',')[0].trim();
+export const corto = n => String(n).split(',')[0].trim();
 const on = (arr, k, def) => Array.isArray(arr) ? arr.includes(k) : def;
 const caja = (n, t, marcada) => `<label class="fila" style="min-height:44px"><input type="checkbox" name="${n}" value="1" ${marcada ? 'checked' : ''} style="width:24px;height:24px"> <span>${t}</span></label>`;
 
 // De lo que has marcado (F, que se guarda) sale la petición. Sin marcas no hay límites: todo lo que limita viene del formulario.
-function armarOp(F, dias, notas) {
+export function armarOp(F, dias, notas) {
   const cat = S.datos().catalogo || [], nom = ids => (ids || []).map(i => cat.find(p => p.id === i)).filter(Boolean).map(p => corto(p.nombre));
   const sal = SALUD.filter(([k]) => on(F.salud, k, false)), ap = APARATOS.filter(([k]) => on(F.aparatos, k, true)), pr = PROT.filter(([k]) => on(F.prot, k, true));
   return { dias, notas: notas || '', comidas: F.comidas && F.comidas.length ? F.comidas : ['comida'], min: Number(F.min) || 0,
     salud: [...sal.map(x => `${x[1]}: ${x[2]}`), ...(F.salud_txt ? ['Otra condición: ' + F.salud_txt] : [])],
     aparatos: ap.length < APARATOS.length ? ap.map(x => x[1]) : [], prot: pr.length < PROT.length ? pr.map(x => x[1]) : [], noProt: PROT.filter(([k]) => !on(F.prot, k, true)).map(x => x[1]),
-    gustan: nom(F.gustan), excl: [...nom(F.excl), ...lista(F.excl_txt)], caducar: F.caducar !== false, repetir: !!F.repetir };
+    gustan: nom(F.gustan), excl: [...nom(F.excl), ...lista(F.excl_txt)], caducar: F.caducar !== false, repetir: !!F.repetir,
+    diasCaduca: Number(F.diasCaduca) > 0 ? Number(F.diasCaduca) : 14, envases: F.envases !== false, usarCasa: F.usarCasa !== false, protDistinta: F.protDistinta !== false, variar: F.variar !== false, completar: F.completar !== false, reserva: nom(F.reserva) };
 }
 // Palabras que la revisión busca en la respuesta: lo que el formulario prohíbe.
-function vigiladas(F) {
+function reservadas(F) { const cat = S.datos().catalogo || []; return (F.reserva || []).map(i => cat.find(x => x.id === i)).filter(Boolean).map(p => corto(p.nombre)); }
+const PROT_PAL = PROT.filter(([k]) => k !== 'huevos' && k !== 'legumbres');
+// Resumen de lo que no cumple el menú con lo que se pidió (solo avisa; no bloquea nada).
+function avisosMenu(menu, F, validas) {
+  const d = S.datos(), dias = menu.filter(x => validas.has(x.fecha) && x.comida && x.comida.texto).sort((a, b) => a.fecha.localeCompare(b.fecha)), nota = [];
+  const txt = x => norm(x.comida.texto + ' ' + (x.comida.usa || []).join(' ')), por = dias.map(txt), tiene = (t, re) => re.test(t);
+  if (F.variar !== false) {
+    const pat = por.filter(t => tiene(t, /patata|boniato/)).length;
+    if (pat > 3 || por.some((t, i) => i && tiene(t, /patata|boniato/) && tiene(por[i - 1], /patata|boniato/))) nota.push(`Hay patata en ${pat} de ${por.length} días${por.some((t, i) => i && tiene(t, /patata|boniato/) && tiene(por[i - 1], /patata|boniato/)) ? ', y algunos seguidos' : ''}.`);
+  }
+  if (F.caducar !== false) {
+    const N = Number(F.diasCaduca) > 0 ? Number(F.diasCaduca) : 14, aj = d.ajustes, fijo = norm([aj.comida_desayuno, aj.comida_media, aj.comida_cena, aj.tortilla_rellenos, aj.tortilla_siempre].join(' ')), res = reservadas(F).map(norm);
+    const sin = d.nevera.filter(p => Number(p.cantidad) > 0).map(p => ({ nom: corto(p.nombre), n: diasHasta(caducidadEfectiva(p)) })).filter(x => x.n !== null && x.n >= 0 && x.n <= N && !res.includes(norm(x.nom)))
+      .filter(x => { const k = (norm(x.nom).split(/\s+/).find(w => w.length >= 4) || norm(x.nom)).slice(0, 5); return !fijo.includes(k) && !por.some(t => t.includes(k)); }).sort((a, b) => a.n - b.n);
+    if (sin.length) nota.push(`Caduca pronto y el menú no lo usa: ${sin.slice(0, 6).map(x => `${x.nom} (en ${x.n} d)`).join(', ')}${sin.length > 6 ? '…' : ''}.`);
+  }
+  if (F.envases !== false) dias.forEach((x, i) => { if (!/lenteja|garbanzo|alubia/.test(por[i])) return; const sig = por[i + 1], ant = por[i - 1], ok = re => re.test(sig || '') || re.test(ant || ''); if (i < dias.length - 1 && !ok(/lenteja|garbanzo|alubia/)) nota.push(`Legumbres el ${diaSemana(x.fecha)}: si abres un bote, la otra mitad no se usa al día siguiente.`); });
+  const protDe = t => (PROT_PAL.find(([, , pal]) => pal.some(w => t.includes(norm(w)))) || [])[0];
+  if (F.protDistinta !== false) dias.forEach((x, i) => { const a = protDe(por[i]), b = i ? protDe(por[i - 1]) : null; if (a && a === b) nota.push(`Misma proteína («${PROT_PAL.find(y => y[0] === a)[1].toLowerCase()}») el ${diaSemana(dias[i - 1].fecha)} y el ${diaSemana(x.fecha)}.`); });
+  if (F.usarCasa !== false) {
+    const sinUsar = [];
+    for (const [k, nombre, pal] of PROT_PAL) {
+      const stock = d.nevera.filter(p => Number(p.cantidad) > 0 && pal.some(w => norm(p.nombre).includes(norm(w))) && !/loncha|jam[oó]n|embutido/i.test(p.nombre));
+      if (stock.length && !por.some(t => pal.some(w => t.includes(norm(w))))) sinUsar.push(`${nombre.toLowerCase()} (${stock.map(p => corto(p.nombre).slice(0, 30)).join(', ')})`);
+    }
+    if (sinUsar.length) nota.push(`No usa nada de lo que tienes en casa de: ${sinUsar.join('; ')}.`);
+  }
+  return nota;
+}
+export function vigiladas(F) {
   const cat = S.datos().catalogo || [], w = [];
   for (const [k, , pal] of PROT) if (!on(F.prot, k, true)) w.push(...pal);
   for (const [k, , , pal] of SALUD) if (on(F.salud, k, false)) w.push(...pal);
@@ -149,10 +182,11 @@ function abrirFormIA() {
     <h2>Qué puedo comer</h2><div class="card"><p class="det" style="margin:0">Desmarca lo que NO quieras que salga.</p>${PROT.map(([k, t]) => caja('p_' + k, t, on(g0.prot, k, true))).join('')}</div>
     <h2>Cómo</h2><div class="card">${campo('Tiempo máximo por plato', `<select name="min">${[[0, 'Sin límite'], [15, '15 minutos'], [30, '30 minutos'], [45, '45 minutos'], [60, '1 hora']].map(([v, t]) => `<option value="${v}" ${Number(g0.min || 0) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
       <p class="det" style="margin:6px 0 0">Con qué cocino:</p>${APARATOS.map(([k, t]) => caja('a_' + k, t, on(g0.aparatos, k, true))).join('')}
-      ${caja('caducar', 'Gastar primero lo que caduca antes', g0.caducar !== false)}${caja('repetir', 'Puede repetir un plato dos días (cocino una vez)', !!g0.repetir)}</div>
+      ${caja('caducar', 'Gastar primero lo que caduca antes', g0.caducar !== false)}${campo('Dar prioridad a lo que caduca en los próximos (días)', `<input name="diasCaduca" type="number" inputmode="numeric" min="1" max="90" value="${esc(g0.diasCaduca || 14)}">`)}${caja('envases', 'Aprovechar los envases (un bote de legumbres = dos días seguidos)', g0.envases !== false)}${caja('usarCasa', 'Usar primero las proteínas que ya tengo (también el congelador)', g0.usarCasa !== false)}${caja('protDistinta', 'No repetir la misma proteína dos días seguidos', g0.protDistinta !== false)}${caja('variar', 'Variar guarniciones (no patata, arroz o pasta todos los días)', g0.variar !== false)}${caja('completar', 'Completar la proteína si un plato se queda corto (huevo duro, yogur…)', g0.completar !== false)}${caja('repetir', 'Puede repetir un plato dos días (cocino una vez)', !!g0.repetir)}</div>
     <h2>Cantidades <span class="det">(vacío = sin límite)</span></h2><div class="card">${par('Calorías por plato', 'kp0', 'kp1', g0.kcal_p)}${par('Proteína por plato (g)', 'pp0', 'pp1', g0.prot_p)}${par('Calorías al día', 'kd0', 'kd1', g0.kcal_d)}${par('Proteína al día (g)', 'pd0', 'pd1', g0.prot_d)}</div>
     <h2>Alimentos</h2><div class="card">
       <details><summary><b>Me gustan</b> <span class="det">(de tu súper; que salgan si encajan)</span></summary>${lst('g_', g0.gustan)}</details>
+      <details style="margin-top:8px"><summary><b>Reservar</b> <span class="det">(para un día de apuro; fuera del menú normal)</span></summary>${lst('r_', g0.reserva)}</details>
       <details style="margin-top:8px"><summary><b>Excluir</b> <span class="det">(que no salgan nunca)</span></summary>${lst('x_', g0.excl)}</details>
       ${campo('Otros excluidos (separados por comas)', `<input name="excl_txt" value="${esc(g0.excl_txt || '')}" autocomplete="off" placeholder="p. ej. coliflor, lentejas">`)}</div>
     <h2>Mis reglas propias</h2><div class="card">${campo('Una por línea (se guardan)', `<textarea name="reglas" rows="4" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px" placeholder="p. ej. aceite de oliva en vaporizador&#10;patata pequeña al microondas">${esc(g0.reglas || '')}</textarea>`)}
@@ -164,7 +198,7 @@ function abrirFormIA() {
     if (!prot.length || !aparatos.length) { avisar('Deja al menos una proteína y una forma de cocinar.'); return false; }
     const ids = pref => cat.filter(p => g[pref + p.id] === '1').map(p => p.id), par2 = (a, b) => [Number(g[a]) || 0, Number(g[b]) || 0];
     d.ajustes.ia_form = { comidas, salud: SALUD.filter(([k]) => g['s_' + k] === '1').map(x => x[0]), salud_txt: (g.salud_txt || '').trim(), prot, aparatos, min: Number(g.min) || 0, caducar: g.caducar === '1', repetir: g.repetir === '1',
-      gustan: ids('g_'), excl: ids('x_'), excl_txt: (g.excl_txt || '').trim(), reglas: (g.reglas || '').trim(), kcal_p: par2('kp0', 'kp1'), prot_p: par2('pp0', 'pp1'), kcal_d: par2('kd0', 'kd1'), prot_d: par2('pd0', 'pd1') };
+      gustan: ids('g_'), excl: ids('x_'), reserva: ids('r_'), diasCaduca: Number(g.diasCaduca) > 0 ? Number(g.diasCaduca) : 14, envases: g.envases === '1', usarCasa: g.usarCasa === '1', protDistinta: g.protDistinta === '1', variar: g.variar === '1', completar: g.completar === '1', excl_txt: (g.excl_txt || '').trim(), reglas: (g.reglas || '').trim(), kcal_p: par2('kp0', 'kp1'), prot_p: par2('pp0', 'pp1'), kcal_d: par2('kd0', 'kd1'), prot_d: par2('pd0', 'pd1') };
     S.guardar();
     const op = armarOp(d.ajustes.ia_form, sel, (g.notas || '').trim());
     if (acc === 'copiar') { setTimeout(() => abrirHoja(`<h1>Texto para la IA</h1><p class="sub">Cópialo entero (mantén pulsado → seleccionar todo → copiar) y pégalo en la IA.</p><textarea readonly rows="16" style="width:100%;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:10px;font-family:monospace;font-size:.75rem">${esc(promptIA(op))}</textarea>`, () => true), 0); return true; }
@@ -187,12 +221,14 @@ export function abrirCambiar(f, k, despues) {
     abrirHoja(`<h1>${k === 'comida' ? 'Comida' : 'Cena'} · ${esc(diaSemana(f))} ${esc(fechaCorta(f))}</h1>
       ${k === 'cena' ? `<label class="campo"><span>Tortilla de…</span><select name="relleno"><option value="">— otra cosa —</option>${rell.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>` : ''}
       ${campo(despues ? '¿Qué has comido (o vas a comer)?' : '¿Qué vas a comer?', `<input name="texto" value="${esc(cur.texto || '')}" autocomplete="off" placeholder="${k === 'comida' ? 'p. ej. contramuslo con ensalada' : 'o deja la tortilla de arriba'}">`)}
+      ${k === 'comida' ? '<button class="btn grande" type="submit" value="receta" style="margin-bottom:10px">📖 Elegir del recetario (ordenado por tus criterios)</button>' : ''}
       <label class="fila" style="min-height:44px"><input type="checkbox" name="fuera" value="1" ${cur.fuera ? 'checked' : ''} style="width:24px;height:24px"> Como fuera de casa</label>
       <p class="det" style="margin:4px 0">Lo de casa que vas a usar (si es del congelador, te aviso el día antes):</p>
       <div class="card" style="max-height:30vh;overflow:auto">${stock.map(p => `<label class="fila" style="min-height:44px"><input type="checkbox" name="i_${esc(p.id)}" value="1" ${marc.has(p.id) ? 'checked' : ''} style="width:24px;height:24px"> <span>${esc(p.nombre.slice(0, 48))} <span class="det">(${esc(p.ubicacion)}, ${esc(p.cantidad)} ${esc(p.unidad)})</span></span></label>`).join('')}</div>
       <div class="fila" style="margin-top:10px"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
       ${plan(f)[k] ? '<button class="btn grande" style="margin-top:10px" type="submit" value="quitar">Quitar lo planeado</button>' : ''}`, (g, acc) => {
       if (acc === 'quitar') { delete plan(f)[k]; S.guardar(); return true; }
+      if (acc === 'receta') { setTimeout(() => import('../elegir_receta.js').then(m => m.abrirElegirReceta(f, despues)), 0); return true; }
       const ids = d.nevera.filter(p => g['i_' + p.id] === '1').map(p => p.id);
       let texto = (g.texto || '').trim();
       if (!texto && g.relleno) texto = `Tortilla de ${g.relleno.toLowerCase()} con ${(d.ajustes.tortilla_siempre || 'tomates cherry').toLowerCase()}`;
@@ -277,7 +313,7 @@ export function acciones(act, el) {
 }
 
 function revisar(r) {
-  const d = S.datos(), f0 = hoy(), vigil = vigiladas(S.datos().ajustes.ia_form || {}), validas = new Set(Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)));
+  const d = S.datos(), f0 = hoy(), FF = S.datos().ajustes.ia_form || {}, vigil = vigiladas(FF), reserva = reservadas(FF), validas = new Set(Array.from({ length: DIAS }, (_, i) => sumaDias(f0, i)));
   const filas = []; const aplicables = [];
   for (const dia of r.menu) {
     if (!validas.has(dia.fecha)) { filas.push(`<div class="card" style="border-color:var(--bad)"><b>${esc(dia.fecha || '?')}</b>: fecha fuera de los próximos ${DIAS} días. Se ignora.</div>`); continue; }
@@ -285,6 +321,7 @@ function revisar(r) {
       const p = dia[k]; if (!p || !p.texto) continue;
       const av = [], ids = [], texto = String(p.texto);
       const bajo = norm(texto + ' ' + (p.usa || []).join(' '));
+      for (const x of reserva) if (x.length > 2 && bajo.includes(norm(x))) av.push(`usa «${x}», que tienes en tu reserva`);
       for (const x of vigil) if (x.length > 2 && bajo.includes(norm(x))) av.push(`contiene «${x}» (excluido en el formulario)`);
       for (const n of (p.usa || [])) { const it = d.nevera.find(x => norm(x.nombre) === norm(n)) || d.nevera.find(x => norm(x.nombre).includes(norm(n)) && norm(n).length > 4); if (it) ids.push(it.id); else av.push(`«${n}» no está en el almacén`); }
       const bloqueo = av.some(a => /no por ahora|excluido/.test(a));
@@ -293,7 +330,8 @@ function revisar(r) {
       if (!bloqueo) aplicables.push({ f: dia.fecha, k, texto, ids });
     }
   }
-  abrirHoja(`<h1>Revisión</h1><p class="sub">${esc(r.notas || '')}</p>${IA.configurada() ? IA.pieIA() : ''}${filas.join('') || '<div class="card vacio">No hay nada que aplicar.</div>'}
+  const notasMenu = avisosMenu(r.menu, FF, validas);
+  abrirHoja(`<h1>Revisión</h1><p class="sub">${esc(r.notas || '')}</p>${IA.configurada() ? IA.pieIA() : ''}${notasMenu.length ? `<div class="card" style="border-color:var(--warn)"><b>A tener en cuenta</b>${notasMenu.map(x => `<div class="det" style="margin-top:4px">· ${esc(x)}</div>`).join('')}</div>` : ''}${filas.join('') || '<div class="card vacio">No hay nada que aplicar.</div>'}
     <p class="det">Se pueden aplicar ${aplicables.length} platos. Los marcados en rojo no se aplican (no encajan con tus reglas). No pisa los que ya marcaste «fuera».</p>
     <div class="fila"><button class="btn main grow" type="submit" value="aplicar" ${aplicables.length ? '' : 'disabled'}>Aplicar ${aplicables.length}</button><button class="btn grow" type="submit" value="no">No aplicar</button></div>`, (g, acc) => {
     if (acc !== 'aplicar') return true;

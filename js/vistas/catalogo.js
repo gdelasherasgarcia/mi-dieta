@@ -11,6 +11,7 @@ const tiene = v => v !== null && v !== undefined && v !== '';
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const TIENDA = [['?', 'Sin comprobar'], ['si', 'Sí, está'], ['no', 'No está']];
 const enTienda = p => p.en_tienda || '?';
+const otroComercio = p => !!p.comercio && p.comercio !== 'Eroski';
 const faltan = p => NUTR.filter(([k]) => !tiene(p[k])).length;
 
 function lineaNutricion(p) {
@@ -30,11 +31,11 @@ function listaHtml() {
     .filter(p => !q || norm(p.nombre + ' ' + p.marca + ' ' + p.notas).includes(norm(q)))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   return lista.map(p => `
-    <button type="button" class="item" data-act="cat-editar" data-id="${esc(p.id)}" style="${enTienda(p) === 'no' ? 'opacity:.5' : ''}">
+    <button type="button" class="item" data-act="cat-editar" data-id="${esc(p.id)}" style="${enTienda(p) === 'no' && !otroComercio(p) ? 'opacity:.5' : ''}">
       <span class="grow"><span class="nom" style="display:block">${esc(p.nombre)}</span>
       <span class="det" style="display:block">${esc([p.formato, tiene(p.precio) ? fmt(p.precio) + ' €' : ''].filter(Boolean).join(' · '))}${p.notas ? (p.formato || tiene(p.precio) ? ' · ' : '') + esc(p.notas) : ''}</span>
       <span style="display:block">${lineaNutricion(p)}</span></span>
-      <span class="chip ${enTienda(p) === 'si' ? 'ok' : enTienda(p) === 'no' ? 'bad' : ''}">${enTienda(p) === 'si' ? 'En mi tienda' : enTienda(p) === 'no' ? 'No está' : 'Sin comprobar'}</span></button>`).join('') || '<div class="card vacio">Nada con ese filtro.</div>';
+      <span class="chip ${otroComercio(p) ? '' : enTienda(p) === 'si' ? 'ok' : enTienda(p) === 'no' ? 'bad' : ''}">${otroComercio(p) ? esc(p.comercio) : enTienda(p) === 'si' ? 'En mi tienda' : enTienda(p) === 'no' ? 'No está' : 'Sin comprobar'}</span></button>`).join('') || '<div class="card vacio">Nada con ese filtro.</div>';
 }
 
 export function render() {
@@ -74,6 +75,7 @@ function formulario(p, nuevo = !p) {
       ${campo('Tipo', `<select name="categoria">${cats}</select>`)}</div>
     <div class="dos">${campo('Formato', `<input name="formato" value="${v(p.formato)}" placeholder="p. ej. 500 g" autocomplete="off">`)}
       ${campo('Precio (€)', `<input name="precio" type="number" inputmode="decimal" min="0" step="any" value="${v(p.precio)}">`)}</div>
+    ${campo(nuevo ? '¿De dónde viene? (Eroski, Dia, tienda…)' : 'Comercio donde lo compro (vacío = Eroski)', `<input name="comercio" value="${v(p.comercio ?? (nuevo ? 'Eroski' : ''))}" list="lista-comercios-cat" autocomplete="off" placeholder="p. ej. Dia"><datalist id="lista-comercios-cat">${[...new Set(S.datos().catalogo.map(x => x.comercio).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('')}</datalist>`)}
     ${campo('¿Está en mi tienda?', `<select name="en_tienda">${TIENDA.map(([k, t]) => `<option value="${k}" ${enTienda(p) === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
     <h2>Nutrición por 100 g</h2>
     <div class="dos">${NUTR.map(num).join('')}</div>
@@ -99,7 +101,7 @@ export function fichaCatalogo(p, { borrador, despues } = {}) {
     const nombre = (f.nombre || '').trim();
     if (!nombre) { avisar('Falta el nombre.'); return false; }
     const datos = { nombre, marca: (f.marca || '').trim(), categoria: f.categoria, formato: (f.formato || '').trim(), precio: numOrNull(f.precio),
-      en_tienda: f.en_tienda || '?', ean: (f.ean || '').replace(/\D/g, '') || null, notas: (f.notas || '').trim(), fuente: (f.fuente || '').trim(), verificado: f.verificado === '1' };
+      en_tienda: (!p && (f.comercio || '').trim() && !/^eroski$/i.test((f.comercio || '').trim()) && (f.en_tienda || '?') === 'si') ? 'no' : (f.en_tienda || '?'), comercio: (f.comercio || '').trim(), ean: (f.ean || '').replace(/\D/g, '') || null, notas: (f.notas || '').trim(), fuente: (f.fuente || '').trim(), verificado: f.verificado === '1' };
     for (const [k] of NUTR) datos[k] = numOrNull(f[k]);
     let prod = p;
     if (p) Object.assign(p, datos); else { prod = { id: nuevoId(), ...datos }; d.catalogo.push(prod); }

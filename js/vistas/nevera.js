@@ -4,6 +4,7 @@ import { esc, diasHasta, fechaCorta, nuevoId, hoy } from '../util.js';
 import { abrirHoja, campo, avisar, botonFoto, ofrecerDeshacer, confirmar } from '../ui.js';
 import { caducidadEfectiva, caducaPorApertura, completar } from '../producto.js';
 import * as IA from '../ia.js';
+import { preguntarOrigen } from '../origen.js';
 
 const UBIC = [['nevera', 'Nevera'], ['congelador', 'Congelador'], ['despensa', 'Despensa']];
 const UNID = ['ud', 'g', 'kg', 'ml', 'l', 'lonchas', 'raciones', 'paquete', 'bote', 'bolsa'];
@@ -297,7 +298,9 @@ export function acciones(act, el) {
       const cat = S.buscarCatalogo(nombre);                 // si está en el catálogo, completa lo que dejaste vacío
       if (cat) { cat.sin_cuenta = datos.sin_cuenta; if (datos.sal100 === null && cat.sal !== null && cat.sal !== undefined) datos.sal100 = cat.sal; if (!datos.marca && cat.marca) datos.marca = cat.marca; }
       if (p) Object.assign(p, datos); else d.nevera.push(completar({ id: nuevoId(), ...datos }));
-      S.guardar(); return true;
+      S.guardar();
+      if (!p && !cat && !(ean && S.buscarCatalogoEan(ean))) setTimeout(() => preguntarOrigen({ nombre, ean: ean || null }), 0);       // producto nuevo: ¿de dónde viene?
+      return true;
     });
     return true;
   }

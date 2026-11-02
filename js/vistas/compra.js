@@ -3,6 +3,7 @@ import * as S from '../store.js';
 import { esc, nuevoId } from '../util.js';
 import { abrirHoja, campo, avisar } from '../ui.js';
 import { fichaCatalogo } from './catalogo.js';
+import { preguntarOrigen } from '../origen.js';
 import { completar } from '../producto.js';
 import { quedan } from '../medicinas.js';
 import { hoy } from '../util.js';
@@ -142,7 +143,9 @@ function asistente(ids, total, hechos) {
       if (!cantidad || cantidad <= 0) { avisar('Pon una cantidad.'); return false; }
       aAlmacen({ nombre: x.nombre, cantidad, unidad: f.unidad, ubicacion: f.ubicacion, caducidad: f.caducidad, sin_cuenta: f.sin_cuenta === '1' }, cat); S.guardar(); h++;
     } else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
-    setTimeout(() => asistente(ids, total, h), 0);                       // la hoja se cierra al volver; la siguiente se abre después
+    const sigue = () => asistente(ids, total, h);
+    if (acc === 'guardar' && !cat) setTimeout(() => preguntarOrigen({ nombre: x.nombre }, sigue), 0);      // producto que no está en el catálogo: ¿de dónde viene?
+    else setTimeout(sigue, 0);                                           // la hoja se cierra al volver; la siguiente se abre después
     return true;
   });
 }
