@@ -23,6 +23,6 @@ const A = [
   [/^(Añadir|Editar) medicina/, 'Nombre, dosis, hora de la primera toma, repetición y días. Anota también las pastillas que quedan: la app resta una por toma y avisa cuando quedan pocas.'],
   [/^(Nuevo|Editar) aviso/, 'Tu propio recordatorio: texto, hora y días de la semana (o un solo día). Sigue en rojo hasta que lo marques como hecho.'],
   [/^Elegir día|^Otro día/, 'Para apuntar lo que se te olvidó otro día: medicinas, agua, ejercicio y comidas. Cuenta para el stock de pastillas y para los informes.'],
-  [/^Reponer pastillas/, 'Cuando repones una medicina, di cuántas has traído y la app actualiza las pastillas que te quedan.'],
+  [/^Reponer pastillas|^He comprado una caja/, 'Di cuántas cajas has traído y cuántas pastillas trae cada una (se recuerda para la próxima vez). La app suma eso a las que quedaban y sigue la cuenta desde ahí. Si lo que quedaba no cuadra con lo que cuentas, corrígelo en el tercer campo.'],
 ];
 export function ayudaHoja(titulo) { const t = String(titulo || '').trim(); const x = A.find(([re]) => re.test(t)); return x ? x[1] : null; }

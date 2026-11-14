@@ -97,13 +97,14 @@ function asistente(ids, total, hechos) {
     if (med) {                                                           // reposición de pastillas → actualiza el stock
       const q = quedan(med, d.registro) ?? 0;
       abrirHoja(`<h1>Reponer pastillas</h1><p class="sub">${esc(med.nombre)}${med.dosis ? ' ' + esc(med.dosis) : ''}. Ahora quedan ${esc(String(q).replace('.', ','))}.</p>
-        ${campo('¿Cuántas pastillas has traído?', `<input name="n" type="number" inputmode="numeric" min="0" step="1" value="">`)}
+        <div class="dos">${campo('Cajas traídas', `<input name="cajas" type="number" inputmode="numeric" min="1" step="1" value="1">`)}${campo('Pastillas por caja', `<input name="porcaja" type="number" inputmode="numeric" min="1" step="1" value="${esc(med.caja_n ?? '')}" placeholder="p. ej. 28">`)}</div>
         <div class="fila"><button class="btn main grow" type="submit" value="guardar">Guardar</button></div>
         <div class="fila" style="margin-top:10px"><button class="btn grow" type="submit" value="nolo">No las traje</button><button class="btn grow" type="submit" value="saltar">Luego</button></div>`, (f, acc) => {
         let h = hechos;
         if (acc === 'guardar') {
-          const nuevas = Number(String(f.n).replace(',', '.')); if (!nuevas || nuevas <= 0) { avisar('Pon cuántas pastillas has traído.'); return false; }
-          med.stock_base = { n: q + nuevas, fecha: hoy(), hora: new Date().toTimeString().slice(0, 5) }; d.compra = d.compra.filter(y => y !== x); S.guardar(); h++;
+          const cajas = Number(String(f.cajas).replace(',', '.')), porcaja = Number(String(f.porcaja).replace(',', '.')), nuevas = cajas * porcaja;
+          if (!(cajas >= 1) || !(porcaja >= 1)) { avisar('Pon cuántas cajas y cuántas pastillas trae cada una.'); return false; }
+          med.caja_n = porcaja; med.stock_base = { n: q + nuevas, fecha: hoy(), hora: new Date().toTimeString().slice(0, 5) }; d.compra = d.compra.filter(y => y !== x); S.guardar(); h++;
         } else if (acc === 'nolo') { x.hecho = false; S.guardar(); }
         setTimeout(() => asistente(ids, total, h), 0); return true;
       });
